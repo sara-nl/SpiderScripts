@@ -1,0 +1,30 @@
+ADA - Access dCache API
+Functional design / manual
+
+SOme design ideas:
+* Defaults will be loaded from /etc/ada and ~/.ada.
+  * Default macaroon lifetime
+  * 
+
+
+Usage:
+ada <action> <arguments>
+
+  init --path <dCache-directory> --duration <ISO duration> --ip <ip>[,<ip2>,<...>]
+
+      Create a macaroon that will be used for authentication.
+      The macaroon can be limited by a lifetime and a client
+      network specification.
+      Macaroons will be saved in ... (project space?)
+
+  list --path <dCache-directory>
+
+      List a file or the contents of a directory.
+  
+  copy --source <source> --target <target> [--parallel]
+
+      Copies a file or directory to or from dCache.
+      With --parallel on a directory, rclone will be used
+      which will do 4 concurrent transfers.
+
+...
