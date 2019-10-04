@@ -24,7 +24,7 @@ ada <action> <arguments>
       Besides a plain text file, also an rclone file will be created
       for operations that require rclone (such as parallel copying of dirs).
 
-  list --path <dCache-directory>
+  list <dCache-directory>
 
       List a file or the contents of a directory.
   
