@@ -1,10 +1,15 @@
 ADA - Access dCache API
 Functional design / manual
 
-SOme design ideas:
-* Defaults will be loaded from /etc/ada and ~/.ada.
-  * Default macaroon lifetime
-  * 
+Some design ideas:
+* Defaults will be loaded from
+  * /etc/ada
+  * the personal folder of the user (~/.ada?)
+  * the project space
+* Defaults may contain:
+  * Macaroon lifetime
+  * IP adress caveat
+  * Default file to store/read a macaroon
 
 
 Usage:
@@ -16,12 +21,14 @@ ada <action> <arguments>
       The macaroon can be limited by a lifetime and a client
       network specification.
       Macaroons will be saved in ... (project space?)
+      Besides a plain text file, also an rclone file will be created
+      for operations that require rclone (such as parallel copying of dirs).
 
   list --path <dCache-directory>
 
       List a file or the contents of a directory.
   
-  copy --source <source> --target <target> [--parallel]
+  copy [--parallel] <source> <target>
 
       Copies a file or directory to or from dCache.
       With --parallel on a directory, rclone will be used
