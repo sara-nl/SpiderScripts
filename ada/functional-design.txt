@@ -7,9 +7,12 @@ Some design ideas:
   * the personal folder of the user (~/.ada?)
   * the project space
 * Defaults may contain:
-  * Macaroon lifetime
-  * IP adress caveat
-  * Default file to store/read a macaroon
+  * The webdav door
+  * The API endpoint
+  * Macaroon properties
+    * lifetime
+    * IP adress caveat
+    * Default file to store/read a macaroon
 
 
 Usage:
