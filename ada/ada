@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# This script talks to the dCache API.
+#
+# Latest version is available at: https://github.com/sara-nl/SpiderScripts
+#
+# Changes:
+# 2020-01-28 - Onno    - Created
+#
+
+usage() {
+  cat <<-EOF
+	ADA - Access dCache API.
+	Usage: $0 [options...]
+	Options are:
+	  (todo)
+	  --debug                - Show what's going on.
+
+	Default values can be stored in /etc/ada.conf and ~/.ada.conf
+	Their signature is not logged to prevent theft.
+
+	Examples:
+	  $0 ... (todo)
+
+	EOF
+  exit 1
+}
+
+# Set default values
+api=https://dolphin12.grid.surfsara.nl:20443/api/v1
+debug=false
+path=
+
+# Load defaults from configuration file if exists
+for configfile in /etc/ada.conf ~/.ada.conf ; do
+  if [ -f "$configfile" ] ; then
+    echo "Loading $configfile"
+    source "$configfile"
+  fi
+done
+
+
+# Process command line arguments
+while [ $# -gt 0 ] ; do
+  case "$1" in
+    --token )
+      token="$2"
+      shift 2
+      ;;
+    --tokenfile )
+      tokenfile="$2"
+      shift 2
+      ;;
+    --api )
+      api="$2"
+      shift 2
+      ;;
+    --list )
+      command=list
+      path="$2"
+      shift 2
+      ;;
+    --debug )
+      debug=true
+      shift 1
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
+
+
+if [ -z "$token" ] ; then
+  if [ -n "$tokenfile" ] ; then
+    token=$(grep 'bearer_token *= *\w' "$tokenfile" | sed -e 's/bearer_token *= *//')
+    if [ -z "$token" ] ; then
+      echo "ERROR: could not read token from tokenfile."
+    fi
+  else
+    echo "ERROR: no token or tokenfile specified."
+  fi
+fi
+
+$debug && echo "Token: '$token'"
+
+curl_authorization=( "-H" "Authorization: Bearer $token" )
+$debug && echo "$curl_authorization"
+
+case $command in
+  list )
+    curl "${curl_authorization[@]}" \
+         -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
+         -H  "accept: application/json" --fail --silent --show-error \
+    | jq -r '.children | .[] | .fileName'
+    ;;
+  * )
+    echo "Command $command is not implemented (yet)."
+    ;;
+esac
