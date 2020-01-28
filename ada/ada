@@ -27,14 +27,14 @@ usage() {
 }
 
 # Set default values
-api=https://dolphin12.grid.surfsara.nl:20443/api/v1
+api=
 debug=false
 path=
 
 # Load defaults from configuration file if exists
 for configfile in /etc/ada.conf ~/.ada.conf ; do
   if [ -f "$configfile" ] ; then
-    echo "Loading $configfile"
+    $debug && echo "Loading $configfile"
     source "$configfile"
   fi
 done
@@ -57,6 +57,11 @@ while [ $# -gt 0 ] ; do
       ;;
     --list )
       command=list
+      path="$2"
+      shift 2
+      ;;
+    --longlist )
+      command=longlist
       path="$2"
       shift 2
       ;;
@@ -85,14 +90,37 @@ fi
 $debug && echo "Token: '$token'"
 
 curl_authorization=( "-H" "Authorization: Bearer $token" )
-$debug && echo "$curl_authorization"
+$debug && echo "${curl_authorization[@]}"
 
 case $command in
   list )
+    $debug && echo "curl \"${curl_authorization[@]}\" \
+         -X GET \"$api/namespace/$path?children=true&locality=false&locations=false&qos=false\" \
+         -H  \"accept: application/json\" --fail --silent --show-error"
     curl "${curl_authorization[@]}" \
          -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
          -H  "accept: application/json" --fail --silent --show-error \
-    | jq -r '.children | .[] | .fileName'
+    | jq -r '.children | .[] | [ .fileName , .fileType ] | @csv' \
+    | sed -e 's/^"//' \
+          -e 's/",/,/' \
+          -e 's/,"REGULAR"//' \
+          -e 's@,"DIR"@/@'
+    ;;
+  longlist )
+    $debug && echo "curl \"${curl_authorization[@]}\" \
+         -X GET \"$api/namespace/$path?children=true&locality=false&locations=false&qos=false\" \
+         -H  \"accept: application/json\" --fail --silent --show-error"
+    curl "${curl_authorization[@]}" \
+         -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
+         -H  "accept: application/json" --fail --silent --show-error \
+    | jq -r '.children | .[] | [ .fileName , .fileType , .size , (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ] | @csv' \
+    | sed -e 's@","REGULAR"@@' \
+          -e 's@","DIR"@/@' \
+    | column -t -s, \
+    | sed -e 's/^"//' \
+          -e 's/"$//' \
+          -e 's/","//g' \
+          -e 's/"20/20/'
     ;;
   * )
     echo "Command $command is not implemented (yet)."
