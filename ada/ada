@@ -34,7 +34,8 @@ debug=false
 path=
 
 # Load defaults from configuration file if exists
-for configfile in /etc/ada.conf ~/.ada.conf ; do
+declare -a configfiles=( /etc/ada.conf ~/.ada.conf )
+for configfile in ${configfiles[@]} ; do
   if [ -f "$configfile" ] ; then
     $debug && echo "Loading $configfile"
     source "$configfile"
@@ -92,6 +93,9 @@ while [ $# -gt 0 ] ; do
   esac
 done
 
+#
+# Validate input
+#
 
 if [ -z "$token" ] ; then
   if [ -n "$tokenfile" ] ; then
@@ -124,6 +128,16 @@ case $command in
     fi
     ;;
 esac
+
+if [ -z "$api" ] ; then
+  echo "ERROR: no API specified. Use --api <api> or specify a default API in one of the configuration files (${configfiles[@]})."
+fi
+
+#
+# End of input validation
+#
+
+
 
 # Construct the authorization part of the curl command.
 # It's an array for easier handling of quotes.
