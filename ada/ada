@@ -47,15 +47,15 @@ while [ $# -gt 0 ] ; do
   case "$1" in
     --token )
       token="$2"
-      shift 2
+      shift ; shift
       ;;
     --tokenfile )
       tokenfile="$2"
-      shift 2
+      shift ; shift
       ;;
     --api )
       api="$2"
-      shift 2
+      shift ; shift
       ;;
     --whoami )
       command=whoami
@@ -64,17 +64,23 @@ while [ $# -gt 0 ] ; do
     --list )
       command=list
       path="$2"
-      shift 2
+      shift ; shift
       ;;
     --longlist )
       command=longlist
       path="$2"
-      shift 2
+      shift ; shift
       ;;
     --mkdir )
       command=mkdir
       path="$2"
-      shift 2
+      shift ; shift
+      ;;
+    --mv )
+      command=mv
+      path="$2"
+      destination="$3"
+      shift ; shift ; shift
       ;;
     --debug )
       debug=true
@@ -104,47 +110,42 @@ if [ -z "$token" ] ; then
   fi
 fi
 
-#$debug && echo "Token: '$token'"
-
-curl_authorization=( "-H" "Authorization: Bearer $token" )
-#$debug && echo "${curl_authorization[@]}"
-
 case $command in
-  list | longlist | mkdir )
+  list | longlist | mkdir | mv )
     if [[ -z $path || $path =~ ^-- ]] ; then
       echo "ERROR: command $command requires a path."
       exit 1
     fi
+    if [ "$command" = "mv" ] ; then 
+      if [[ -z $destination || $destination =~ ^-- ]] ; then
+        echo "ERROR: command $command requires a destination."
+        exit 1
+      fi
+    fi
     ;;
 esac
 
-
+# Construct the authorization part of the curl command.
+# It's an array for easier handling of quotes.
+curl_authorization=( "-H" "Authorization: Bearer $token" )
 
 case $command in
   whoami )
-    $debug && {
-        echo -n "curl "
-        printf '"%s" '  "${curl_authorization[@]}"
-        echo -n "-X GET \"$api/user\" "
-        echo    "-H  \"accept: application/json\" --fail --silent --show-error"
-        echo
-    }
-    curl "${curl_authorization[@]}" \
-         -X GET "$api/user" \
-         -H  "accept: application/json" --fail --silent --show-error \
+    (
+      $debug && set -x   # If --debug is specified, show (only) curl command
+      curl "${curl_authorization[@]}" \
+           -X GET "$api/user" \
+           -H  "accept: application/json" --fail --silent --show-error
+    ) \
     | jq
     ;;
   list )
-    $debug && {
-        echo -n "curl "
-        printf '"%s" '  "${curl_authorization[@]}"
-        echo -n "-X GET \"$api/namespace/$path?children=true&locality=false&locations=false&qos=false\" "
-        echo    "-H  \"accept: application/json\" --fail --silent --show-error"
-        echo
-    }
-    curl "${curl_authorization[@]}" \
-         -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
-         -H  "accept: application/json" --fail --silent --show-error \
+    (
+      $debug && set -x   # If --debug is specified, show (only) curl command
+      curl "${curl_authorization[@]}" \
+           -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
+           -H  "accept: application/json" --fail --silent --show-error
+    ) \
     | jq -r '.children | .[] | [ .fileName , .fileType ] | @csv' \
     | sed -e 's/^"//' \
           -e 's/",/,/' \
@@ -153,16 +154,12 @@ case $command in
     | sort
     ;;
   longlist )
-    $debug && { 
-        echo -n "curl " 
-        printf '"%s" ' "${curl_authorization[@]}"
-        echo -n "-X GET \"$api/namespace/$path?children=true&locality=false&locations=false&qos=false\" "
-        echo    "-H  \"accept: application/json\" --fail --silent --show-error"
-        echo
-    }
-    curl "${curl_authorization[@]}" \
-         -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
-         -H  "accept: application/json" --fail --silent --show-error \
+    (
+      $debug && set -x   # If --debug is specified, show (only) curl command
+      curl "${curl_authorization[@]}" \
+           -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
+           -H  "accept: application/json" --fail --silent --show-error
+    ) \
     | jq -r '.children | .[] | [ .fileName , .fileType , .size , (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ] | @csv' \
     | sed -e 's@","REGULAR"@@' \
           -e 's@","DIR"@/@' \
@@ -178,11 +175,25 @@ case $command in
   mkdir )
     parent=$(dirname "$path")
     name=$(basename "$path")
-    curl "${curl_authorization[@]}" \
-         -X POST "$api/namespace/$parent" \
-         -H "accept: application/json" \
-         -H "content-type: application/json" \
-         -d "{ \"action\":\"mkdir\";\"name\":\"$name\"}" --fail --silent --show-error \
+    (
+      $debug && set -x   # If --debug is specified, show (only) curl command
+      curl "${curl_authorization[@]}" \
+           -X POST "$api/namespace/$parent" \
+           -H "accept: application/json" \
+           -H "content-type: application/json" \
+           -d "{ \"action\":\"mkdir\";\"name\":\"$name\"}" --fail --silent --show-error
+    ) \
+    | jq -r .status
+    ;;
+  mv )
+    (
+      $debug && set -x   # If --debug is specified, show (only) curl command
+      curl "${curl_authorization[@]}" \
+           -X POST "$api/namespace/$path" \
+           -H "accept: application/json" \
+           -H "content-type: application/json" \
+           -d "{ \"action\":\"mv\";\"destination\":\"$destination\"}" --fail --silent --show-error
+    ) \
     | jq -r .status
     ;;
   * )
