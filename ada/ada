@@ -83,6 +83,11 @@ while [ $# -gt 0 ] ; do
       destination="$3"
       shift ; shift ; shift
       ;;
+    --delete )
+      command=delete
+      path="$2"
+      shift ; shift
+      ;;
     --checksum )
       command=checksum
       if [ "$2" = "--from-file" ] ; then
@@ -135,7 +140,7 @@ if [ -z "$token" ] ; then
 fi
 
 case $command in
-  list | longlist | mkdir | mv )
+  list | longlist | mkdir | mv | delete )
     if [[ -z $path || $path =~ ^-- ]] ; then
       echo "ERROR: command $command requires a path."
       exit 1
@@ -221,6 +226,16 @@ case $command in
            -H "accept: application/json" \
            -H "content-type: application/json" \
            -d "{ \"action\":\"mv\";\"destination\":\"$destination\"}" --fail --silent --show-error
+    ) \
+    | jq -r .status
+    ;;
+  delete )
+    (
+      $debug && set -x   # If --debug is specified, show (only) curl command
+      curl "${curl_authorization[@]}" \
+           -X DELETE "$api/namespace/$path" \
+           -H "accept: application/json" \
+           --fail --silent --show-error
     ) \
     | jq -r .status
     ;;
