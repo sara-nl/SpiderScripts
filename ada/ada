@@ -83,6 +83,26 @@ while [ $# -gt 0 ] ; do
       destination="$3"
       shift ; shift ; shift
       ;;
+    --checksum )
+      command=checksum
+      if [ "$2" = "--from-file" ] ; then
+       	pathlist=$(<"$3")
+        shift ; shift ; shift
+      else
+        pathlist="$2"
+        shift ; shift
+      fi
+      ;;
+    --stage )
+      command=stage
+      if [ "$2" = "--from-file" ] ; then
+        pathlist=$(<"$3")
+       	shift ;	shift ;	shift
+      else
+        pathlist="$2"
+        shift ; shift
+      fi
+      ;;
     --debug )
       debug=true
       shift 1
@@ -160,28 +180,22 @@ case $command in
            -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
            -H  "accept: application/json" --fail --silent --show-error
     ) \
-    | jq -r '.children | .[] | [ .fileName , .fileType ] | @csv' \
-    | sed -e 's/^"//' \
-          -e 's/",/,/' \
-          -e 's/,"REGULAR"//' \
-          -e 's@,"DIR"@/@' \
+    | jq -r '.children | .[] | [ .fileName , .fileType ] | @tsv' \
+    | sed -e 's@\tREGULAR@@' \
+          -e 's@\tDIR@/@' \
     | sort
     ;;
   longlist )
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
       curl "${curl_authorization[@]}" \
-           -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
+           -X GET "$api/namespace/$path?children=true&locality=true&locations=false&qos=true" \
            -H  "accept: application/json" --fail --silent --show-error
     ) \
-    | jq -r '.children | .[] | [ .fileName , .fileType , .size , (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ] | @csv' \
-    | sed -e 's@","REGULAR"@@' \
-          -e 's@","DIR"@/@' \
-    | column -t -s, \
-    | sed -e 's/^"//' \
-          -e 's/"$//' \
-          -e 's/","//g' \
-          -e 's/"20/20/' \
+    | jq -r '.children | .[] | [ .fileName , .fileType , .size , (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) , .fileLocality ] | @tsv' \
+    | sed -e 's@\tREGULAR@@' \
+          -e 's@\tDIR@/@' \
+    | column -t -s $'\t' \
     | sort
     # Note: it would be better to use strflocaltime instead of strftime,
     # but that requires a newer version of jq than Centos 7 has.
