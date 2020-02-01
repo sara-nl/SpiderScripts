@@ -168,13 +168,21 @@ fi
 # It's an array for easier handling of quotes.
 curl_authorization=( "-H" "Authorization: Bearer $token" )
 
+curl_options_common=(
+                      -H "accept: application/json"
+                      --fail --silent --show-error
+                    )
+curl_options_post=(
+                    -H "content-type: application/json"
+                  )
+
 case $command in
   whoami )
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
       curl "${curl_authorization[@]}" \
-           -X GET "$api/user" \
-           -H  "accept: application/json" --fail --silent --show-error
+           "${curl_options_common[@]}" \
+           -X GET "$api/user"
     ) \
     | jq
     ;;
@@ -182,8 +190,8 @@ case $command in
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
       curl "${curl_authorization[@]}" \
-           -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
-           -H  "accept: application/json" --fail --silent --show-error
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false"
     ) \
     | jq -r '.children | .[] | [ .fileName , .fileType ] | @tsv' \
     | sed -e 's@\tREGULAR@@' \
@@ -194,8 +202,8 @@ case $command in
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
       curl "${curl_authorization[@]}" \
-           -X GET "$api/namespace/$path?children=true&locality=true&locations=false&qos=true" \
-           -H  "accept: application/json" --fail --silent --show-error
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$path?children=true&locality=true&locations=false&qos=true"
     ) \
     | jq -r '.children | .[] | [ .fileName , .fileType , .size , (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) , .fileLocality ] | @tsv' \
     | sed -e 's@\tREGULAR@@' \
@@ -211,10 +219,10 @@ case $command in
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
       curl "${curl_authorization[@]}" \
+           "${curl_options_common[@]}" \
+           "${curl_options_post[@]}" \
            -X POST "$api/namespace/$parent" \
-           -H "accept: application/json" \
-           -H "content-type: application/json" \
-           -d "{ \"action\":\"mkdir\";\"name\":\"$name\"}" --fail --silent --show-error
+           -d "{ \"action\":\"mkdir\";\"name\":\"$name\"}"
     ) \
     | jq -r .status
     ;;
@@ -222,10 +230,10 @@ case $command in
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
       curl "${curl_authorization[@]}" \
+           "${curl_options_common[@]}" \
+           "${curl_options_post[@]}" \
            -X POST "$api/namespace/$path" \
-           -H "accept: application/json" \
-           -H "content-type: application/json" \
-           -d "{ \"action\":\"mv\";\"destination\":\"$destination\"}" --fail --silent --show-error
+           -d "{ \"action\":\"mv\";\"destination\":\"$destination\"}"
     ) \
     | jq -r .status
     ;;
@@ -233,9 +241,8 @@ case $command in
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
       curl "${curl_authorization[@]}" \
-           -X DELETE "$api/namespace/$path" \
-           -H "accept: application/json" \
-           --fail --silent --show-error
+           "${curl_options_common[@]}" \
+           -X DELETE "$api/namespace/$path"
     ) \
     | jq -r .status
     ;;
