@@ -19,7 +19,6 @@ usage() {
 	  --debug                - Show what's going on.
 
 	Default values can be stored in /etc/ada.conf and ~/.ada.conf
-	Their signature is not logged to prevent theft.
 
 	Examples:
 	  $0 ... (todo)
@@ -152,6 +151,12 @@ case $command in
       fi
     fi
     ;;
+  checksum | stage )
+    if [[ -z $pathlist || $pathlist =~ ^-- ]] ; then
+      echo "ERROR: command $command requires a path or a path list."
+      exit 1
+    fi
+    ;;
 esac
 
 if [ -z "$api" ] ; then
@@ -164,10 +169,15 @@ fi
 
 
 
+#
+# Construction of curl command arguments.
+# These are put in arrays for easier handling of quotes.
+#
+
 # Construct the authorization part of the curl command.
-# It's an array for easier handling of quotes.
 curl_authorization=( "-H" "Authorization: Bearer $token" )
 
+# Other curl arguments
 curl_options_common=(
                       -H "accept: application/json"
                       --fail --silent --show-error
@@ -175,6 +185,10 @@ curl_options_common=(
 curl_options_post=(
                     -H "content-type: application/json"
                   )
+
+#
+# Execute API call(s).
+#
 
 case $command in
   whoami )
@@ -205,7 +219,14 @@ case $command in
            "${curl_options_common[@]}" \
            -X GET "$api/namespace/$path?children=true&locality=true&locations=false&qos=true"
     ) \
-    | jq -r '.children | .[] | [ .fileName , .fileType , .size , (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) , .fileLocality ] | @tsv' \
+    | jq -r '.children | .[]
+             | [ .fileName ,
+                 .fileType ,
+                 .size ,
+                 (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ,
+                 .currentQos ,
+                 .fileLocality ]
+             | @tsv' \
     | sed -e 's@\tREGULAR@@' \
           -e 's@\tDIR@/@' \
     | column -t -s $'\t' \
@@ -245,6 +266,52 @@ case $command in
            -X DELETE "$api/namespace/$path"
     ) \
     | jq -r .status
+    ;;
+  checksum )
+    for path in $pathlist ; do
+      (
+        $debug && set -x   # If --debug is specified, show (only) curl command
+        curl "${curl_authorization[@]}" \
+             "${curl_options_common[@]}" \
+             -X GET "$api/namespace/$path?children=false&locality=false&locations=false&qos=false"
+      ) \
+      | jq -r '.pnfsId' \
+      | { 
+          read pnfsid
+          echo -n -e "$path\t"
+          if [ -z "$pnfsid" ] ; then
+            continue  # skip to next $path
+          fi
+          (
+            $debug && set -x
+            curl "${curl_authorization[@]}" \
+                 "${curl_options_common[@]}" \
+                 -X GET "$api/id/$pnfsid"
+          ) \
+          | jq -r '.checksums | .[] | [ .type , .value ] | @tsv' \
+          | sed -e 's/\t/=/' | tr '\n' '\t'
+          echo
+        }
+    done \
+    | column -t -s $'\t'
+    ;;
+  stage | unstage )
+    case $command in
+      stage   )  qos='disk+tape'  ;;
+      unstage )  qos='tape'       ;;
+    esac
+    for path in $pathlist ; do
+      (
+        $debug && set -x   # If --debug is specified, show (only) curl command
+        curl "${curl_authorization[@]}" \
+             "${curl_options_common[@]}" \
+             "${curl_options_post[@]}" \
+             -X POST "$api/namespace/$path" \
+             -d "{ \"action\":\"qos\";\"target\":\"$qos\"}"
+      ) \
+      | jq -r '.children | .[] | [ .fileName , .checksum ] | @tsv'  
+    done \
+    | column -t -s $'\t'  
     ;;
   * )
     echo "Command $command is not implemented (yet)."
