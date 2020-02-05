@@ -68,8 +68,14 @@ while [ $# -gt 0 ] ; do
       ;;
     --longlist )
       command=longlist
-      path="$2"
-      shift ; shift
+      if [ "$2" = "--from-file" ] ; then
+        $debug && echo "Reading list '$3'"
+        pathlist=$(<"$3")
+        shift ; shift ; shift
+      else
+	pathlist="$2"
+        shift ; shift
+      fi
       ;;
     --mkdir )
       command=mkdir
@@ -122,6 +128,7 @@ while [ $# -gt 0 ] ; do
       shift 1
       ;;
     *)
+      echo "ERROR: unknown option '$1'."
       usage
       ;;
   esac
@@ -149,7 +156,7 @@ if [ -z "$token" ] ; then
 fi
 
 case $command in
-  list | longlist | mkdir | mv | delete )
+  list | mkdir | mv | delete )
     if [[ -z $path || $path =~ ^-- ]] ; then
       echo "ERROR: command $command requires a path."
       exit 1
@@ -161,7 +168,7 @@ case $command in
       fi
     fi
     ;;
-  checksum | stage | unstage )
+  longlist | checksum | stage | unstage )
     if [[ -z $pathlist || $pathlist =~ ^-- ]] ; then
       echo "ERROR: command $command requires a path or a path list."
       exit 1
@@ -261,50 +268,49 @@ case $command in
     esac
     ;;
   longlist )
-    type=$(pathtype "$path")
-    encoded_path=$(urlencode "$path")
-    case $type in
-      DIR )
-        (
-          $debug && set -x   # If --debug is specified, show (only) curl command
-          curl "${curl_authorization[@]}" \
-               "${curl_options_common[@]}" \
-               -X GET "$api/namespace/$encoded_path?children=true&locality=true&locations=false&qos=true"
-        ) \
-        | jq -r '.children | .[]
-                 | [ .fileName ,
-                     .fileType ,
-                     .size ,
+    while read path ; do
+      type=$(pathtype "$path")
+      encoded_path=$(urlencode "$path")
+      case $type in
+        DIR )
+          (
+            $debug && set -x   # If --debug is specified, show (only) curl command
+            curl "${curl_authorization[@]}" \
+                 "${curl_options_common[@]}" \
+                 -X GET "$api/namespace/$encoded_path?children=true&locality=true&locations=false&qos=true"
+          ) \
+          | jq -r '.children | .[]
+                   | [ .fileName ,
+                       .fileType ,
+                       .size ,
+                       (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ,
+                       .currentQos ,
+                       .fileLocality ]
+                   | @tsv' \
+          | sed -e 's@\tREGULAR@@' \
+                -e 's@\tDIR@/@' \
+                -e 's@\tLINK@@'
+          # Note: it would be better to use strflocaltime instead of strftime,
+          # but that requires a newer version of jq than Centos 7 has.
+          ;;
+        REGULAR | LINK )
+          (
+            $debug && set -x   # If --debug is specified, show (only) curl command
+            curl "${curl_authorization[@]}" \
+                 "${curl_options_common[@]}" \
+                  -X GET "$api/namespace/$encoded_path?children=false&locality=true&locations=false&qos=true"
+          ) \
+          | jq -r '[ .size ,
                      (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ,
                      .currentQos ,
                      .fileLocality ]
-                 | @tsv' \
-        | sed -e 's@\tREGULAR@@' \
-              -e 's@\tDIR@/@' \
-              -e 's@\tLINK@@' \
-        | column -t -s $'\t' \
-        | sort
-        # Note: it would be better to use strflocaltime instead of strftime,
-        # but that requires a newer version of jq than Centos 7 has.
-        ;;
-      REGULAR | LINK )
-        (
-          $debug && set -x   # If --debug is specified, show (only) curl command
-          curl "${curl_authorization[@]}" \
-               "${curl_options_common[@]}" \
-               -X GET "$api/namespace/$encoded_path?children=false&locality=true&locations=false&qos=true"
-        ) \
-        | jq -r '[ .size ,
-                   (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ,
-                   .currentQos ,
-                   .fileLocality ]
-                 | @tsv' \
-        | sed -e "s@^@$path\t@" \
-        | column -t -s $'\t'
-        # Note: it would be better to use strflocaltime instead of strftime,
-        # but that requires a newer version of jq than Centos 7 has.
-        ;;
-    esac
+                   | @tsv' \
+          | sed -e "s@^@$path\t@"
+          ;;
+      esac
+    done <<<"$pathlist" \
+    | column -t -s $'\t' \
+    | sort
     ;;    
   mkdir )
     parent=$(urlencode $(dirname "$path"))
@@ -340,12 +346,13 @@ case $command in
     | jq -r .status
     ;;
   checksum )
-    for path in $pathlist ; do
+    while read path ; do
+      encoded_path=$(urlencode "$path")
       (
         $debug && set -x   # If --debug is specified, show (only) curl command
         curl "${curl_authorization[@]}" \
              "${curl_options_common[@]}" \
-             -X GET "$api/namespace/$path?children=false&locality=false&locations=false&qos=false"
+             -X GET "$api/namespace/$encoded_path?children=false&locality=false&locations=false&qos=false"
       ) \
       | jq -r '.pnfsId' \
       | { 
@@ -364,7 +371,7 @@ case $command in
           | sed -e 's/\t/=/' | tr '\n' '\t'
           echo
         }
-    done \
+    done <<<"$pathlist" \
     | column -t -s $'\t'
     ;;
   stage | unstage )
