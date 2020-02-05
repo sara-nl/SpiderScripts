@@ -251,9 +251,10 @@ case $command in
         | jq -r '.children | .[] | [ .fileName , .fileType ] | @tsv' \
         | sed -e 's@\tREGULAR@@' \
               -e 's@\tDIR@/@' \
+              -e 's@\tLINK@@' \
         | sort
         ;;
-      REGULAR )
+      REGULAR | LINK )
         # User asked listing of a regular file (not a dir).
         # No addition data is needed, the pathtype command has already checked that the file exists;
         # So we only list the file name. Nothing more.
@@ -321,7 +322,7 @@ case $command in
            "${curl_options_common[@]}" \
            "${curl_options_post[@]}" \
            -X POST "$api/namespace/$parent" \
-           -d "{ \"action\":\"mkdir\";\"name\":\"$name\"}"
+           -d "{\"action\":\"mkdir\";\"name\":\"$name\"}"
     ) \
     | jq -r .status
     ;;
@@ -332,7 +333,7 @@ case $command in
            "${curl_options_common[@]}" \
            "${curl_options_post[@]}" \
            -X POST "$api/namespace/$path" \
-           -d "{ \"action\":\"mv\";\"destination\":\"$destination\"}"
+           -d "{\"action\":\"mv\";\"destination\":\"$destination\"}"
     ) \
     | jq -r .status
     ;;
@@ -387,7 +388,7 @@ case $command in
              "${curl_options_common[@]}" \
              "${curl_options_post[@]}" \
              -X POST "$api/namespace/$encoded_path" \
-             -d "{ \"action\":\"qos\";\"target\":\"$target\"}"
+             -d "{\"action\":\"qos\";\"target\":\"$target\"}"
       ) | jq -r .status
     done <<<"$pathlist" \
     | column -t -s $'\t'  
