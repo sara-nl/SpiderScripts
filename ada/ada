@@ -99,11 +99,21 @@ while [ $# -gt 0 ] ; do
       ;;
     --stage )
       command=stage
-      if [ "$2" = "--from-file" ] ; then
+      if [[ $2 =~ ^--from-?file ]] ; then
         pathlist=$(<"$3")
        	shift ;	shift ;	shift
       else
         pathlist="$2"
+        shift ; shift
+      fi
+      ;;
+    --unstage )
+      command=unstage
+      if [[ $2 =~ ^--from-?file ]] ; then
+        pathlist=$(<"$3")
+        shift ; shift ; shift
+      else
+	pathlist="$2"
         shift ; shift
       fi
       ;;
@@ -151,7 +161,7 @@ case $command in
       fi
     fi
     ;;
-  checksum | stage )
+  checksum | stage | unstage )
     if [[ -z $pathlist || $pathlist =~ ^-- ]] ; then
       echo "ERROR: command $command requires a path or a path list."
       exit 1
@@ -359,20 +369,20 @@ case $command in
     ;;
   stage | unstage )
     case $command in
-      stage   )  qos='disk+tape'  ;;
-      unstage )  qos='tape'       ;;
+      stage   )  target='disk+tape'  ;;
+      unstage )  target='tape'       ;;
     esac
-    for path in $pathlist ; do
+    while read path ; do
+      encoded_path=$(urlencode "$path")
       (
         $debug && set -x   # If --debug is specified, show (only) curl command
         curl "${curl_authorization[@]}" \
              "${curl_options_common[@]}" \
              "${curl_options_post[@]}" \
-             -X POST "$api/namespace/$path" \
-             -d "{ \"action\":\"qos\";\"target\":\"$qos\"}"
-      ) \
-      | jq -r '.children | .[] | [ .fileName , .checksum ] | @tsv'  
-    done \
+             -X POST "$api/namespace/$encoded_path" \
+             -d "{ \"action\":\"qos\";\"target\":\"$target\"}"
+      ) | jq -r .status
+    done <<<"$pathlist" \
     | column -t -s $'\t'  
     ;;
   * )
