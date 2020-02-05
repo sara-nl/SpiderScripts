@@ -186,6 +186,27 @@ curl_options_post=(
                     -H "content-type: application/json"
                   )
 
+
+#
+# Define functions we need.
+#
+
+urlencode () {
+  # We use jq for encoding the URL, because we need jq anyway.
+  $debug && echo "urlencoding '$1' to '$(printf "$1" | jq -sRr @uri)'" 1>&2
+  printf "$1" | jq -sRr @uri
+}
+
+pathtype () {
+  local path=$(urlencode "$1")
+  curl "${curl_authorization[@]}" \
+       "${curl_options_common[@]}" \
+       -X GET "$api/namespace/$path?children=false&locality=false&locations=false&qos=false" \
+  | jq -r .fileType
+}
+
+
+
 #
 # Execute API call(s).
 #
@@ -201,41 +222,82 @@ case $command in
     | jq
     ;;
   list )
-    (
-      $debug && set -x   # If --debug is specified, show (only) curl command
-      curl "${curl_authorization[@]}" \
-           "${curl_options_common[@]}" \
-           -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false"
-    ) \
-    | jq -r '.children | .[] | [ .fileName , .fileType ] | @tsv' \
-    | sed -e 's@\tREGULAR@@' \
-          -e 's@\tDIR@/@' \
-    | sort
+    type=$(pathtype "$path")
+    case $type in
+      DIR )
+        (
+          $debug && set -x   # If --debug is specified, show (only) curl command
+          curl "${curl_authorization[@]}" \
+               "${curl_options_common[@]}" \
+               -X GET "$api/namespace/$(urlencode "$path")?children=true&locality=false&locations=false&qos=false"
+        ) \
+        | jq -r '.children | .[] | [ .fileName , .fileType ] | @tsv' \
+        | sed -e 's@\tREGULAR@@' \
+              -e 's@\tDIR@/@' \
+        | sort
+        ;;
+      REGULAR )
+        # User asked listing of a regular file (not a dir).
+        # No addition data is needed, the pathtype command has already checked that the file exists;
+        # So we only list the file name. Nothing more.
+        echo "$path"
+        ;;
+      '' )
+        # No valid object. Do nothing.
+        ;;
+      * )
+        echo "Unknown object type '$type'. Please create an issue for this in Github."
+        ;;
+    esac
     ;;
   longlist )
-    (
-      $debug && set -x   # If --debug is specified, show (only) curl command
-      curl "${curl_authorization[@]}" \
-           "${curl_options_common[@]}" \
-           -X GET "$api/namespace/$path?children=true&locality=true&locations=false&qos=true"
-    ) \
-    | jq -r '.children | .[]
-             | [ .fileName ,
-                 .fileType ,
-                 .size ,
-                 (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ,
-                 .currentQos ,
-                 .fileLocality ]
-             | @tsv' \
-    | sed -e 's@\tREGULAR@@' \
-          -e 's@\tDIR@/@' \
-    | column -t -s $'\t' \
-    | sort
-    # Note: it would be better to use strflocaltime instead of strftime,
-    # but that requires a newer version of jq than Centos 7 has.
-    ;;
+    type=$(pathtype "$path")
+    encoded_path=$(urlencode "$path")
+    case $type in
+      DIR )
+        (
+          $debug && set -x   # If --debug is specified, show (only) curl command
+          curl "${curl_authorization[@]}" \
+               "${curl_options_common[@]}" \
+               -X GET "$api/namespace/$encoded_path?children=true&locality=true&locations=false&qos=true"
+        ) \
+        | jq -r '.children | .[]
+                 | [ .fileName ,
+                     .fileType ,
+                     .size ,
+                     (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ,
+                     .currentQos ,
+                     .fileLocality ]
+                 | @tsv' \
+        | sed -e 's@\tREGULAR@@' \
+              -e 's@\tDIR@/@' \
+              -e 's@\tLINK@@' \
+        | column -t -s $'\t' \
+        | sort
+        # Note: it would be better to use strflocaltime instead of strftime,
+        # but that requires a newer version of jq than Centos 7 has.
+        ;;
+      REGULAR | LINK )
+        (
+          $debug && set -x   # If --debug is specified, show (only) curl command
+          curl "${curl_authorization[@]}" \
+               "${curl_options_common[@]}" \
+               -X GET "$api/namespace/$encoded_path?children=false&locality=true&locations=false&qos=true"
+        ) \
+        | jq -r '[ .size ,
+                   (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ,
+                   .currentQos ,
+                   .fileLocality ]
+                 | @tsv' \
+        | sed -e "s@^@$path\t@" \
+        | column -t -s $'\t'
+        # Note: it would be better to use strflocaltime instead of strftime,
+        # but that requires a newer version of jq than Centos 7 has.
+        ;;
+    esac
+    ;;    
   mkdir )
-    parent=$(dirname "$path")
+    parent=$(urlencode $(dirname "$path"))
     name=$(basename "$path")
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
