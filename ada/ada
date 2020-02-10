@@ -338,11 +338,12 @@ case $command in
     | jq -r .status
     ;;
   delete )
+    encoded_path=$(urlencode "$path")
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
       curl "${curl_authorization[@]}" \
            "${curl_options_common[@]}" \
-           -X DELETE "$api/namespace/$path"
+           -X DELETE "$api/namespace/$encoded_path"
     ) \
     | jq -r .status
     ;;
