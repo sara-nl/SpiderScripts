@@ -8,6 +8,7 @@
 #
 # Changes:
 # 2020-01-28 - Onno    - Created
+# 2020-02-14 - Onno    - Support for server-sent events
 #
 
 usage() {
@@ -31,6 +32,7 @@ usage() {
 api=
 debug=false
 path=
+recursive=false
 
 # Load defaults from configuration file if exists
 declare -a configfiles=( /etc/ada.conf ~/.ada.conf )
@@ -47,7 +49,7 @@ while [ $# -gt 0 ] ; do
   case "$1" in
     --token )
       token="$2"
-      shift ; shift
+      shift ; shift   # 'shift 2' won't work if $2 doesn't exist.
       ;;
     --tokenfile )
       tokenfile="$2"
@@ -123,9 +125,19 @@ while [ $# -gt 0 ] ; do
         shift ; shift
       fi
       ;;
+    --events )
+      command=events
+      channelname="$2"
+      path="$3"
+      shift ; shift ; shift
+      ;;
+    --recursive )
+      recursive=true
+      shift
+      ;;
     --debug )
       debug=true
-      shift 1
+      shift
       ;;
     *)
       echo "ERROR: unknown option '$1'."
@@ -156,17 +168,25 @@ if [ -z "$token" ] ; then
 fi
 
 case $command in
-  list | mkdir | mv | delete )
+  list | mkdir | mv | delete | events )
     if [[ -z $path || $path =~ ^-- ]] ; then
       echo "ERROR: command $command requires a path."
       exit 1
     fi
-    if [ "$command" = "mv" ] ; then 
-      if [[ -z $destination || $destination =~ ^-- ]] ; then
-        echo "ERROR: command $command requires a destination."
-        exit 1
-      fi
-    fi
+    case $command in
+      mv )
+        if [[ -z $destination || $destination =~ ^-- ]] ; then
+          echo "ERROR: command $command requires a destination."
+          exit 1
+        fi
+        ;;
+      events )
+        if [[ -z $channelname || $channelname =~ ^-- ]] ; then
+          echo "ERROR: command $command requires a channel name."
+          exit 1
+        fi
+        ;;
+    esac
     ;;
   longlist | checksum | stage | unstage )
     if [[ -z $pathlist || $pathlist =~ ^-- ]] ; then
@@ -202,7 +222,10 @@ curl_options_common=(
 curl_options_post=(
                     -H "content-type: application/json"
                   )
-
+curl_options_stream=(
+                      -H 'accept: text/event-stream'
+                      --fail --silent --show-error
+                    )
 
 #
 # Define functions we need.
@@ -222,6 +245,70 @@ pathtype () {
   | jq -r .fileType
 }
 
+get_channel_by_name () {
+  local channelname="$1"
+  channel=$(
+             (
+               $debug && set -x
+               curl "${curl_authorization[@]}" \
+                    "${curl_options_common[@]}" \
+                    -X GET "$api/events/channels?client-id=$channelname"
+              ) \
+              | jq -r '.[]'
+           )
+  channel_count=$(wc -l <<<"$channel")
+  if [ "$channel_count" -gt 1 ] ; then
+    echo "ERROR: there is more than one channel with that name:"
+    echo "$channel"
+    exit 1
+  fi
+  echo "$channel"
+}
+
+channel_subscribe () {
+  local channel="$1"
+  local path="$2"
+  (
+    $debug && set -x
+    curl "${curl_authorization[@]}" \
+         "${curl_options_common[@]}" \
+         "${curl_options_post[@]}" \
+         -X POST "$channel/subscriptions/inotify" \
+         -d "{\"path\":\"$path\"}"
+  )
+}
+
+get_subscriptions_by_channel () {
+  local channel="$1"
+  (
+    $debug && set -x
+    curl "${curl_authorization[@]}" \
+         "${curl_options_common[@]}" \
+         -X GET "$channel/subscriptions"
+  ) \
+  | jq -r '.[]'
+}
+
+list_subscription () {
+  local subscription="$1"
+  (
+    $debug && set -x
+    curl "${curl_authorization[@]}" \
+         "${curl_options_common[@]}" \
+         -X GET "$subscription"
+  ) \
+  | jq
+}
+
+follow_channel () {
+  local channel="$1"
+  (
+    $debug && set -x
+    curl "${curl_authorization[@]}" \
+         "${curl_options_stream[@]}" \
+         -X GET "$channel"
+  )
+}
 
 
 #
@@ -393,6 +480,27 @@ case $command in
       ) | jq -r .status
     done <<<"$pathlist" \
     | column -t -s $'\t'  
+    ;;
+  events )
+    channel=$(get_channel_by_name "$channelname")
+    if [ "$channel" = "" ] ; then
+      # Channel doesn't exist; create it.
+      (
+        $debug && set -x
+        curl "${curl_authorization[@]}" \
+             "${curl_options_common[@]}" \
+             "${curl_options_post[@]}" \
+             -X POST "$api/events/channels" -d "{\"client-id\":\"$channelname\"}"
+      )
+      channel=$(get_channel_by_name "$channelname")
+    fi
+    echo "Channel: $channel"
+    channel_subscribe "$channel" "$path"
+    for subscription in $(get_subscriptions_by_channel "$channel") ; do
+      list_subscription "$subscription"
+    done
+    echo "Following..."
+    follow_channel "$channel"
     ;;
   * )
     echo "Command $command is not implemented (yet)."
