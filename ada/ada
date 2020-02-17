@@ -224,6 +224,7 @@ curl_options_post=(
                   )
 curl_options_stream=(
                       -H 'accept: text/event-stream'
+                      --no-buffer
                       --fail --silent --show-error
                     )
 
@@ -237,6 +238,7 @@ urlencode () {
   printf "$1" | jq -sRr @uri
 }
 
+
 pathtype () {
   local path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
@@ -244,6 +246,7 @@ pathtype () {
        -X GET "$api/namespace/$path?children=false&locality=false&locations=false&qos=false" \
   | jq -r .fileType
 }
+
 
 get_channel_by_name () {
   local channelname="$1"
@@ -265,6 +268,7 @@ get_channel_by_name () {
   echo "$channel"
 }
 
+
 channel_subscribe () {
   local channel="$1"
   local path="$2"
@@ -278,6 +282,7 @@ channel_subscribe () {
   )
 }
 
+
 get_subscriptions_by_channel () {
   local channel="$1"
   (
@@ -288,6 +293,7 @@ get_subscriptions_by_channel () {
   ) \
   | jq -r '.[]'
 }
+
 
 list_subscription () {
   local subscription="$1"
@@ -300,14 +306,77 @@ list_subscription () {
   | jq
 }
 
+
+get_path_from_subscription () {
+  local subscription="$1"
+  (
+    $debug && set -x
+    curl "${curl_authorization[@]}" \
+         "${curl_options_common[@]}" \
+         -X GET "$subscription"
+  ) \
+  | jq -r .path
+}
+
+
 follow_channel () {
   local channel="$1"
+  declare -A subscriptions
+  mkdir -p ~/.ada
+  short_channel_name=$(basename "$channel")
   (
     $debug && set -x
     curl "${curl_authorization[@]}" \
          "${curl_options_stream[@]}" \
          -X GET "$channel"
-  )
+  ) \
+  | while IFS=': ' read key value ; do
+      case $key in
+        event )
+          if [ "$value" != "inotify" ] ; then
+            echo "ERROR: don't know how to handle event type '$value'."
+            exit 1
+          fi
+          ;;
+        id )
+          # Save event number so we can resume later.
+          event_id="$value"
+          ;;
+        data )
+          $debug && { echo ; echo "$value" | jq --compact-output ; }
+          # Sometimes there's no .event.name: then 'select (.!=null)' will output an empty string.
+          object_name=$(jq -r '.event.name | select (.!=null)' <<< "$value")
+          mask=$(jq -r '.event.mask | @csv' <<< "$value" | tr -d '"')
+          cookie=$(jq -r '.event.cookie | select (.!=null)' <<<"$value")
+          subscription=$(jq -r '.subscription' <<< "$value")
+          subscription_id=$(basename "$subscription")
+          # We want to output not only the file name, but the full path.
+          # We can find the path from the API, but we cache the result in an array.
+          if [ ! ${subscriptions[$subscription_id]+_} ] ; then
+            # Not cached yet; get the path and store it in an array.
+            subscriptions[$subscription_id]=$(get_path_from_subscription "$subscription")
+          fi
+          path="${subscriptions[$subscription_id]}"
+          # Output this event
+          if [ -n "$cookie" ] ; then
+            cookie_string=" cookie:$cookie "
+          else
+            cookie_string=
+          fi
+          echo -e "${path}/${object_name} $cookie_string $mask"
+          # When done with this event's data, save the event ID.
+          # This can be used to resume the channel.
+          echo "$event_id" > ~/.ada/"$short_channel_name"
+          ;;
+        '' )
+          # Empty line, just skip it.
+          ;;
+        * )
+          echo "ERROR: don't know how to handle '$key: $value'."
+          exit 1
+          ;;
+      esac
+  done
 }
 
 
