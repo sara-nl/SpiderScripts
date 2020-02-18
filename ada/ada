@@ -248,6 +248,15 @@ pathtype () {
 }
 
 
+get_subdirs () {
+  local path=$(urlencode "$1")
+  curl "${curl_authorization[@]}" \
+       "${curl_options_common[@]}" \
+       -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
+  | jq -r '.children | .[] | if .fileType == "DIR" then .fileName else empty end'
+}
+
+
 get_channel_by_name () {
   local channelname="$1"
   channel=$(
@@ -272,6 +281,7 @@ get_channel_by_name () {
 channel_subscribe () {
   local channel="$1"
   local path="$2"
+  local recursive="$3"
   (
     $debug && set -x
     curl "${curl_authorization[@]}" \
@@ -280,6 +290,13 @@ channel_subscribe () {
          -X POST "$channel/subscriptions/inotify" \
          -d "{\"path\":\"$path\"}"
   )
+  if $recursive ; then
+    get_subdirs "$path" \
+    | while read subdir ; do
+      $debug && echo "Subscribing to: $path/$subdir"
+      channel_subscribe "$channel" "$path/$subdir" "$recursive"
+    done
+  fi
 }
 
 
@@ -333,53 +350,68 @@ follow_channel () {
   | while IFS=': ' read key value ; do
       case $key in
         event )
-          if [ "$value" != "inotify" ] ; then
-            echo "ERROR: don't know how to handle event type '$value'."
-            exit 1
-          fi
+          case $value in
+            inotify | SYSTEM )
+              event_type="$value"
+              ;;
+            * )
+              echo "ERROR: don't know how to handle event type '$value'."
+              cat  # Read and show everything from stdin
+              exit 1
+              ;;
+          esac
           ;;
         id )
           # Save event number so we can resume later.
           event_id="$value"
           ;;
         data )
-          $debug && { echo ; echo "$value" | jq --compact-output ; }
-          # Sometimes there's no .event.name: then 'select (.!=null)' will output an empty string.
-          object_name=$(jq -r '.event.name | select (.!=null)' <<< "$value")
-          mask=$(jq -r '.event.mask | @csv' <<< "$value" | tr -d '"')
-          cookie=$(jq -r '.event.cookie | select (.!=null)' <<<"$value")
-          subscription=$(jq -r '.subscription' <<< "$value")
-          subscription_id=$(basename "$subscription")
-          # We want to output not only the file name, but the full path.
-          # We get the path from the API, but we cache the result
-          # in an array for performance.
-          if [ ! ${subscriptions[$subscription_id]+_} ] ; then
-            # Not cached yet; get the path and store it in an array.
-            subscriptions[$subscription_id]=$(get_path_from_subscription "$subscription")
-          fi
-          path="${subscriptions[$subscription_id]}"
-          #
-          # If recursion is requested, we need to start following new directories.
-          if $recursive ; then
-            if [ "$mask" = "IN_CREATE,IN_ISDIR" ] ; then
-              channel_subscribe "$channel" "$path/$object_name"
-            fi
-          fi
-          #
-          # A move or rename operation consists of two events,
-          # an IN_MOVED_FROM and an IN_MOVED_FROM, both with
-          # a cookie (ID) to relate them.
-          if [ -n "$cookie" ] ; then
-            cookie_string="  cookie:$cookie"
-          else
-            cookie_string=
-          fi
-          # Here comes the output.
-          echo -e "${path}/${object_name}  ${mask}${cookie_string}"
-          #
-          # When done with this event's data, save the event ID.
-          # This can be used to resume the channel.
-          echo "$event_id" > ~/.ada/"$short_channel_name"
+          case $event_type in
+            inotify )
+              $debug && { echo ; echo "$value" | jq --compact-output ; }
+              # Sometimes there's no .event.name: 
+              # then 'select (.!=null)' will output an empty string.
+              object_name=$(jq -r '.event.name | select (.!=null)' <<< "$value")
+              mask=$(jq -r '.event.mask | @csv' <<< "$value" | tr -d '"')
+              cookie=$(jq -r '.event.cookie | select (.!=null)' <<<"$value")
+              subscription=$(jq -r '.subscription' <<< "$value")
+              subscription_id=$(basename "$subscription")
+              # We want to output not only the file name, but the full path.
+              # We get the path from the API, but we cache the result
+              # in an array for performance.
+              if [ ! ${subscriptions[$subscription_id]+_} ] ; then
+                # Not cached yet; get the path and store it in an array.
+                subscriptions[$subscription_id]=$(get_path_from_subscription "$subscription")
+              fi
+              path="${subscriptions[$subscription_id]}"
+              #
+              # If recursion is requested, we need to start following new directories.
+              if $recursive ; then
+                if [ "$mask" = "IN_CREATE,IN_ISDIR" ] ; then
+                  channel_subscribe "$channel" "$path/$object_name" "$recursive"
+                fi
+              fi
+              #
+              # A move or rename operation consists of two events,
+              # an IN_MOVED_FROM and an IN_MOVED_FROM, both with
+              # a cookie (ID) to relate them.
+              if [ -n "$cookie" ] ; then
+                cookie_string="  cookie:$cookie"
+              else
+                cookie_string=
+              fi
+              # Here comes the output.
+              echo -e "$event_type  ${path}/${object_name}  ${mask}${cookie_string}"
+              #
+              # When done with this event's data, save the event ID.
+              # This can be used to resume the channel.
+              echo "$event_id" > ~/.ada/"$short_channel_name"
+              ;;
+            SYSTEM )
+              # For system type events we just want the raw output.
+              echo -e "$event_type  $value"              
+              ;;
+          esac
           ;;
         '' )
           # Empty line, just skip it.
@@ -577,7 +609,7 @@ case $command in
       channel=$(get_channel_by_name "$channelname")
     fi
     echo "Channel: $channel"
-    channel_subscribe "$channel" "$path"
+    channel_subscribe "$channel" "$path" "$recursive"
     for subscription in $(get_subscriptions_by_channel "$channel") ; do
       list_subscription "$subscription"
     done
