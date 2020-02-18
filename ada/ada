@@ -418,9 +418,9 @@ case $command in
                -X GET "$api/namespace/$(urlencode "$path")?children=true&locality=false&locations=false&qos=false"
         ) \
         | jq -r '.children | .[] | [ .fileName , .fileType ] | @tsv' \
-        | sed -e 's@\tREGULAR@@' \
-              -e 's@\tDIR@/@' \
-              -e 's@\tLINK@@' \
+        | sed -e $'s@\tREGULAR@@' \
+              -e $'s@\tDIR@/@' \
+              -e $'s@\tLINK@@' \
         | sort
         ;;
       REGULAR | LINK )
@@ -457,9 +457,9 @@ case $command in
                        .currentQos ,
                        .fileLocality ]
                    | @tsv' \
-          | sed -e 's@\tREGULAR@@' \
-                -e 's@\tDIR@/@' \
-                -e 's@\tLINK@@'
+          | sed -e $'s@\tREGULAR@@' \
+                -e $'s@\tDIR@/@' \
+                -e $'s@\tLINK@@'
           # Note: it would be better to use strflocaltime instead of strftime,
           # but that requires a newer version of jq than Centos 7 has.
           ;;
