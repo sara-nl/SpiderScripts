@@ -586,7 +586,7 @@ case $command in
            "${curl_options_common[@]}" \
            "${curl_options_post[@]}" \
            -X POST "$api/namespace/$parent" \
-           -d "{\"action\":\"mkdir\";\"name\":\"$name\"}"
+           -d "{\"action\":\"mkdir\",\"name\":\"$name\"}"
     ) \
     | jq -r .status
     ;;
@@ -597,7 +597,7 @@ case $command in
            "${curl_options_common[@]}" \
            "${curl_options_post[@]}" \
            -X POST "$api/namespace/$path" \
-           -d "{\"action\":\"mv\";\"destination\":\"$destination\"}"
+           -d "{\"action\":\"mv\",\"destination\":\"$destination\"}"
     ) \
     | jq -r .status
     ;;
@@ -653,7 +653,7 @@ case $command in
              "${curl_options_common[@]}" \
              "${curl_options_post[@]}" \
              -X POST "$api/namespace/$encoded_path" \
-             -d "{\"action\":\"qos\";\"target\":\"$target\"}"
+             -d "{\"action\":\"qos\",\"target\":\"$target\"}"
       ) | jq -r .status
     done <<<"$pathlist" \
     | column -t -s $'\t'  
