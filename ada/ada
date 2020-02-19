@@ -392,11 +392,23 @@ follow_channel () {
   declare -A subscriptions
   mkdir -p ~/.ada
   short_channel_name=$(basename "$channel")
+  # If a file exists with the last event for this channel,
+  # We should resume from that event ID.
+  if [ -f ~/.ada/$short_channel_name ] ; then
+    last_event_id=$(grep -E --max-count=1 --only-matching '[0-9]+' ~/.ada/$short_channel_name)
+    if [ -n "$last_event_id" ] ; then
+      echo "Resuming from $last_event_id"
+      last_event_id_header=(-H "Last-Event-ID: $last_event_id")
+    fi
+  else
+    last_event_id_header=()
+  fi
   (
     $debug && set -x
     curl "${curl_authorization[@]}" \
          "${curl_options_stream[@]}" \
-         -X GET "$channel"
+         -X GET "$channel" \
+         "${last_event_id_header[@]}"
   ) \
   | while IFS=': ' read key value ; do
       case $key in
