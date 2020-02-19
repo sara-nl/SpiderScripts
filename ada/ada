@@ -9,20 +9,71 @@
 # Changes:
 # 2020-01-28 - Onno    - Created
 # 2020-02-14 - Onno    - Support for server-sent events
-#
+# 2020-02-18 - Onno    - Recursion with server-sent events
 
 usage() {
   cat <<-EOF
-	ADA - Access dCache API.
-	Usage: $0 [options...]
-	Options are:
-	  (todo)
-	  --debug                - Show what's going on.
+	ADA - Access dCache API to manage your data.
+	Usage: $0 [generic options...] <command> [command options]
 
-	Default values can be stored in /etc/ada.conf and ~/.ada.conf
+	Generic options are:
+	  
+	  --api        - The dCache API URL to talk to.
+	  --token      - A macaroon or other authentication token.
+	  --tokenfile  - An rclone config file containing the token.
+	  --debug      - Show what's going on.
+
+	Commands are:
+
+	  --whoami
+	      Show how dCache identifies you.
+
+	  --list <directory>
+	      List a directory.
+
+	  --longlist <file|directory>
+	      List a file or directory with details.
+	  --longlist --from-file <file-list>
+	      List the files or directories specified in the given file.
+
+	  --mkdir <directory>
+	      Create a directory.
+
+	  --mv <file|directory> <destination>
+	      Rename or move a file or directory.
+
+	  --delete <file|directory>
+	      Delete a file or (empty) directory.
+	      To recursively delete a directory and its contents,
+	      we suggest you try rclone.
+
+	  --checksum <file>
+	      Show MD5/Adler32 checksums for file
+	  --checksum <directory>
+	      Show MD5/Adler32 checksums for files in directory.
+	  --checksum --from-file <file-list>
+	      Show MD5/Adler32 checksums for files in the list.
+
+	  --stage <file>
+	      Stage a file from tape (restore, bring it online).
+	  --stage --from-file <file-list>
+	      Stage files in the list from tape.
+
+	  --unstage <file>
+	      Release file so dCache may purge their online replica.
+	  --unstage --from-file <file-list>
+	      Release files in the list.
+
+	  --events <channel-name> <path-to-follow> [--recursive]
+	      Subscribe to changes in the given direcory,
+	      using server-sent events (SSE).
 
 	Examples:
 	  $0 ... (todo)
+
+	Default values can be stored in /etc/ada.conf and ~/.ada.conf.
+	For example:
+	api='https://prometheus.desy.de:3880/api/v1/'
 
 	EOF
   exit 1
