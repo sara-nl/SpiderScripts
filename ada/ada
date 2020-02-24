@@ -10,6 +10,7 @@
 # 2020-01-28 - Onno    - Created
 # 2020-02-14 - Onno    - Support for server-sent events
 # 2020-02-18 - Onno    - Recursion with server-sent events
+# 2020-02-24 - Onno    - Don't show bearer tokens on command line
 
 usage() {
   cat <<-EOF
@@ -19,8 +20,10 @@ usage() {
 	Generic options are:
 	  
 	  --api        - The dCache API URL to talk to.
-	  --token      - A macaroon or other authentication token.
-	  --tokenfile  - An rclone config file containing the token.
+	  --tokenfile  - A file containing the token.
+                     This can be an rclone config file with a
+                     bearer_token statement, or a plain file with
+                     only the token.
 	  --debug      - Show what's going on.
 
 	Commands are:
@@ -84,6 +87,7 @@ api=
 debug=false
 path=
 recursive=false
+command=
 
 # Load defaults from configuration file if exists
 declare -a configfiles=( /etc/ada.conf ~/.ada.conf )
@@ -98,10 +102,6 @@ done
 # Process command line arguments
 while [ $# -gt 0 ] ; do
   case "$1" in
-    --token )
-      token="$2"
-      shift ; shift   # 'shift 2' won't work if $2 doesn't exist.
-      ;;
     --tokenfile )
       tokenfile="$2"
       shift ; shift
@@ -126,7 +126,7 @@ while [ $# -gt 0 ] ; do
         pathlist=$(<"$3")
         shift ; shift ; shift
       else
-	pathlist="$2"
+        pathlist="$2"
         shift ; shift
       fi
       ;;
@@ -172,7 +172,7 @@ while [ $# -gt 0 ] ; do
         pathlist=$(<"$3")
         shift ; shift ; shift
       else
-	pathlist="$2"
+        pathlist="$2"
         shift ; shift
       fi
       ;;
@@ -201,22 +201,26 @@ done
 # Validate input
 #
 
-if [ -z "$token" ] ; then
-  if [ -n "$tokenfile" ] ; then
-    token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
-    if [ $(wc -l <<<"$token") -gt 1 ] ; then
-      echo "ERROR: file '$tokenfile' contains multiple tokens."
-      exit 1
-    fi
-    if [ -z "$token" ] ; then
-      echo "ERROR: could not read token from tokenfile."
-      exit 1
-    fi
-  else
-    echo "ERROR: no token or tokenfile specified."
-    exit 1
-  fi
+if [ -z "$tokenfile" ] ; then
+  echo "ERROR: no tokenfile specified."
+  exit 1
 fi
+
+token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
+if [ $(wc -l <<<"$token") -gt 1 ] ; then
+  echo "ERROR: file '$tokenfile' contains multiple tokens."
+  exit 1
+fi
+# If it was not an rclone config file, it may be a 
+# plain text file with only the token.
+if [ -z "$token" ] ; then
+  token=$(head -n 1 "$tokenfile")
+fi
+if [ -z "$token" ] ; then
+  echo "ERROR: could not read token from tokenfile."
+  exit 1
+fi
+
 
 case $command in
   list | mkdir | mv | delete | events )
@@ -245,6 +249,16 @@ case $command in
       exit 1
     fi
     ;;
+  '' )
+    echo "ERROR. Please specify a command. See --help for more information."
+    exit 1
+    ;;
+  whoami )
+    ;;
+  * )
+    echo "ERROR: command '$command' is not implemented."
+    exit 1
+    ;;
 esac
 
 if [ -z "$api" ] ; then
@@ -263,7 +277,18 @@ fi
 #
 
 # Construct the authorization part of the curl command.
-curl_authorization=( "-H" "Authorization: Bearer $token" )
+# We can't specify the token as a command line argument,
+# because others could read that with the ps command.
+# So we have to put the authorization header in a temporary file.
+curl_authorization_header_file=$(mktemp -p ~/.ada/ authorization_header_XXXXXXXXXXXX)
+chmod 600 "$curl_authorization_header_file"
+# File should be cleaned up when we're done
+trap 'rm -f "$curl_authorization_header_file"' EXIT
+
+# Save the header in the file
+echo "header \"Authorization: Bearer $token\"" > "$curl_authorization_header_file"
+# Refer to the file with the header
+curl_authorization=( "--config" "$curl_authorization_header_file" )
 
 # Other curl arguments
 curl_options_common=(
@@ -392,10 +417,12 @@ follow_channel () {
   declare -A subscriptions
   mkdir -p ~/.ada
   short_channel_name=$(basename "$channel")
+  channel_status_file=~/.ada/"channel-$short_channel_name"
   # If a file exists with the last event for this channel,
   # We should resume from that event ID.
-  if [ -f ~/.ada/$short_channel_name ] ; then
-    last_event_id=$(grep -E --max-count=1 --only-matching '[0-9]+' ~/.ada/$short_channel_name)
+  if [ -f "$channel_status_file" ] ; then
+    last_event_id=$(grep -E --max-count=1 --only-matching \
+                         '[0-9]+' "$channel_status_file")
     if [ -n "$last_event_id" ] ; then
       echo "Resuming from $last_event_id"
       last_event_id_header=(-H "Last-Event-ID: $last_event_id")
@@ -468,7 +495,7 @@ follow_channel () {
               #
               # When done with this event's data, save the event ID.
               # This can be used to resume the channel.
-              echo "$event_id" > ~/.ada/"$short_channel_name"
+              echo "$event_id" > "$channel_status_file"
               ;;
             SYSTEM )
               # For system type events we just want the raw output.
@@ -680,6 +707,6 @@ case $command in
     follow_channel "$channel"
     ;;
   * )
-    echo "Command $command is not implemented (yet)."
+    echo "Command '$command' is not implemented (yet)."
     ;;
 esac
