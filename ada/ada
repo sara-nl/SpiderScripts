@@ -71,12 +71,16 @@ usage() {
 	  --unstage --from-file <file-list>
 	      Release files in the list.
 
-	  --events <channel-name> <path-to-follow> [--recursive]
+	  --events <channel-name> <path-to-follow> [--recursive] [--timeout s]
 	      Subscribe to changes in the given direcory,
 	      using server-sent events (SSE).
 	      When --recursive is added, all subdirectories will be
 	      followed as well, including any new subdirectories
 	      that will be created.
+	      With --timeout a timeout in seconds can be set. When
+	      a channel is not being followed, dCache may clean it up
+	      after this timeout. Events that have not been processed
+	      will then be lost.
 
 	Examples:
 	  $0 ... (todo)
@@ -95,6 +99,7 @@ debug=false
 path=
 recursive=false
 command=
+channel_timeout=3600
 
 # Load defaults from configuration file if exists
 declare -a configfiles=( /etc/ada.conf ~/.ada/ada.conf )
@@ -192,6 +197,10 @@ while [ $# -gt 0 ] ; do
     --recursive )
       recursive=true
       shift
+      ;;
+    --timeout )
+      channel_timeout="$2"
+      shift ; shift
       ;;
     --debug )
       debug=true
@@ -762,6 +771,15 @@ case $command in
              -X POST "$api/events/channels" -d "{\"client-id\":\"$channelname\"}"
       )
       channel=$(get_channel_by_name "$channelname")
+      # Set channel timeout
+      (
+       	$debug && set -x
+        curl "${curl_authorization[@]}" \
+             "${curl_options_common[@]}" \
+             "${curl_options_post[@]}" \
+             -X PATCH "$channel" \
+             -d "{\"timeout\": $channel_timeout}"
+      )
     fi
     echo "Channel: $channel"
     channel_subscribe "$channel" "$path" "$recursive"
