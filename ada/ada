@@ -287,6 +287,7 @@ fi
 # We can't specify the token as a command line argument,
 # because others could read that with the ps command.
 # So we have to put the authorization header in a temporary file.
+mkdir -p ~/.ada/
 curl_authorization_header_file=$(mktemp -p ~/.ada/ authorization_header_XXXXXXXXXXXX)
 chmod 600 "$curl_authorization_header_file"
 # File should be cleaned up when we're done,
