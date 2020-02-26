@@ -59,17 +59,24 @@ usage() {
 
 	  --stage <file>
 	      Stage a file from tape (restore, bring it online).
+	  --stage <directory>
+	      Stage files in directory.
 	  --stage --from-file <file-list>
-	      Stage files in the list from tape.
+	      Stage files in the list.
 
 	  --unstage <file>
 	      Release file so dCache may purge their online replica.
+	  --unstage <directory>
+	      Release files in directory.
 	  --unstage --from-file <file-list>
 	      Release files in the list.
 
 	  --events <channel-name> <path-to-follow> [--recursive]
 	      Subscribe to changes in the given direcory,
 	      using server-sent events (SSE).
+          When --recursive is added, all subdirectories will be
+          followed as well, including any new subdirectories
+          that will be created.
 
 	Examples:
 	  $0 ... (todo)
@@ -333,6 +340,15 @@ get_subdirs () {
 }
 
 
+get_files_in_dir () {
+  local path=$(urlencode "$1")
+  curl "${curl_authorization[@]}" \
+       "${curl_options_common[@]}" \
+       -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
+  | jq -r '.children | .[] | if .fileType == "REGULAR" then .fileName else empty end'
+}
+
+
 get_channel_by_name () {
   local channelname="$1"
   channel=$(
@@ -501,10 +517,16 @@ follow_channel () {
               # For system type events we just want the raw output.
               echo -e "$event_type  $value"              
               ;;
+            '' )
+              # If we get a data line that was not preceded by an 
+              # event line, something is wrong.
+              echo "Unexpected data line: '$value' near event ID '$event_id'."
+              ;;
           esac
           ;;
         '' )
-          # Empty line, just skip it.
+          # Empty line: this ends the current event.
+          event_type=
           ;;
         * )
           echo "ERROR: don't know how to handle '$key: $value'."
@@ -527,7 +549,7 @@ case $command in
            "${curl_options_common[@]}" \
            -X GET "$api/user"
     ) \
-    | jq
+    | jq .
     ;;
   list )
     type=$(pathtype "$path")
@@ -547,7 +569,8 @@ case $command in
         ;;
       REGULAR | LINK )
         # User asked listing of a regular file (not a dir).
-        # No addition data is needed, the pathtype command has already checked that the file exists;
+        # No addition data is needed, the pathtype function 
+        # has already checked that the file exists;
         # So we only list the file name. Nothing more.
         echo "$path"
         ;;
@@ -673,15 +696,41 @@ case $command in
       unstage )  target='tape'       ;;
     esac
     while read path ; do
-      encoded_path=$(urlencode "$path")
-      (
-        $debug && set -x   # If --debug is specified, show (only) curl command
-        curl "${curl_authorization[@]}" \
-             "${curl_options_common[@]}" \
-             "${curl_options_post[@]}" \
-             -X POST "$api/namespace/$encoded_path" \
-             -d "{\"action\":\"qos\",\"target\":\"$target\"}"
-      ) | jq -r .status
+      type=$(pathtype "$path")
+      case $type in
+        DIR )
+          get_files_in_dir "$path" \
+          | while read filename ; do
+            encoded_path=$(urlencode "$path/$filename")
+            $debug || echo -n "$path/$filename  "
+            (
+              $debug && set -x   # If --debug is specified, show (only) curl command
+              curl "${curl_authorization[@]}" \
+                   "${curl_options_common[@]}" \
+                   "${curl_options_post[@]}" \
+                   -X POST "$api/namespace/$encoded_path" \
+                   -d "{\"action\":\"qos\",\"target\":\"$target\"}"
+            ) | jq -r .status
+          done
+          ;;
+        REGULAR | LINK )
+          encoded_path=$(urlencode "$path")
+          (
+            $debug && set -x
+            curl "${curl_authorization[@]}" \
+                 "${curl_options_common[@]}" \
+                 "${curl_options_post[@]}" \
+                 -X POST "$api/namespace/$encoded_path" \
+                 -d "{\"action\":\"qos\",\"target\":\"$target\"}"
+          ) | jq -r .status
+          ;;
+        '' )
+          # No valid object. Do nothing.
+          ;;
+        * )
+          echo "Unknown object type '$type'. Please create an issue for this in Github."
+          ;;
+      esac
     done <<<"$pathlist" \
     | column -t -s $'\t'  
     ;;
