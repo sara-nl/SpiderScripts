@@ -294,10 +294,12 @@ chmod 600 "$curl_authorization_header_file"
 # File should be cleaned up when we're done,
 # unless we're debugging
 if $debug ; then
-  echo "WARNING: in debug mode, the authorization header file"\
-       "$curl_authorization_header_file will not be cleaned up." \
-       "Please clean it up yourself."
-  echo
+  trap "{
+          echo
+          echo 'WARNING: in debug mode, the authorization header file' \
+               '$curl_authorization_header_file will not be cleaned up.' \
+               'Please clean it up yourself.'
+        }" EXIT
 else
   trap 'rm -f "$curl_authorization_header_file"' EXIT
 fi
