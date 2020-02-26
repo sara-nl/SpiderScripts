@@ -289,8 +289,16 @@ fi
 # So we have to put the authorization header in a temporary file.
 curl_authorization_header_file=$(mktemp -p ~/.ada/ authorization_header_XXXXXXXXXXXX)
 chmod 600 "$curl_authorization_header_file"
-# File should be cleaned up when we're done
-trap 'rm -f "$curl_authorization_header_file"' EXIT
+# File should be cleaned up when we're done,
+# unless we're debugging
+if $debug ; then
+  echo "WARNING: in debug mode, the authorization header file"\
+       "$curl_authorization_header_file will not be cleaned up." \
+       "Please clean it up yourself."
+  echo
+else
+  trap 'rm -f "$curl_authorization_header_file"' EXIT
+fi
 
 # Save the header in the file
 echo "header \"Authorization: Bearer $token\"" > "$curl_authorization_header_file"
