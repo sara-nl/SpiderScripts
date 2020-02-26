@@ -412,7 +412,7 @@ list_subscription () {
          "${curl_options_common[@]}" \
          -X GET "$subscription"
   ) \
-  | jq
+  | jq .
 }
 
 
