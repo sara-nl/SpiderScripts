@@ -270,6 +270,7 @@ esac
 
 if [ -z "$api" ] ; then
   echo "ERROR: no API specified. Use --api <api> or specify a default API in one of the configuration files (${configfiles[@]})."
+  exit 1
 fi
 
 #
