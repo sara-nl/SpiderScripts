@@ -65,7 +65,7 @@ usage() {
 	      Stage files in the list.
 
 	  --unstage <file>
-	      Release file so dCache may purge their online replica.
+	      Release file so dCache may purge its online replica.
 	  --unstage <directory>
 	      Release files in directory.
 	  --unstage --from-file <file-list>
