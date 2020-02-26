@@ -74,9 +74,9 @@ usage() {
 	  --events <channel-name> <path-to-follow> [--recursive]
 	      Subscribe to changes in the given direcory,
 	      using server-sent events (SSE).
-          When --recursive is added, all subdirectories will be
-          followed as well, including any new subdirectories
-          that will be created.
+	      When --recursive is added, all subdirectories will be
+	      followed as well, including any new subdirectories
+	      that will be created.
 
 	Examples:
 	  $0 ... (todo)
