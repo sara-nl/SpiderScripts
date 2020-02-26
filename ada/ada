@@ -81,7 +81,7 @@ usage() {
 	Examples:
 	  $0 ... (todo)
 
-	Default values can be stored in /etc/ada.conf and ~/.ada.conf.
+	Default values can be stored in /etc/ada.conf and ~/.ada/ada.conf.
 	For example:
 	api='https://prometheus.desy.de:3880/api/v1/'
 
@@ -97,7 +97,7 @@ recursive=false
 command=
 
 # Load defaults from configuration file if exists
-declare -a configfiles=( /etc/ada.conf ~/.ada.conf )
+declare -a configfiles=( /etc/ada.conf ~/.ada/ada.conf )
 for configfile in ${configfiles[@]} ; do
   if [ -f "$configfile" ] ; then
     $debug && echo "Loading $configfile"
@@ -287,9 +287,10 @@ fi
 # We can't specify the token as a command line argument,
 # because others could read that with the ps command.
 # So we have to put the authorization header in a temporary file.
-mkdir -p ~/.ada
+mkdir -p ~/.ada/headers
 chmod 700 ~/.ada
-curl_authorization_header_file=$(mktemp -p ~/.ada/ authorization_header_XXXXXXXXXXXX)
+chmod 700 ~/.ada/headers
+curl_authorization_header_file=$(mktemp -p ~/.ada/headers authorization_header_XXXXXXXXXXXX)
 chmod 600 "$curl_authorization_header_file"
 # File should be cleaned up when we're done,
 # unless we're debugging
@@ -443,9 +444,11 @@ get_path_from_subscription () {
 follow_channel () {
   local channel="$1"
   declare -A subscriptions
-  mkdir -p ~/.ada
+  mkdir -p ~/.ada/channels
+  chmod 700 ~/.ada
+  chmod 700 ~/.ada/channels
   short_channel_name=$(basename "$channel")
-  channel_status_file=~/.ada/"channel-$short_channel_name"
+  channel_status_file=~/.ada/channels/"channel-$short_channel_name"
   # If a file exists with the last event for this channel,
   # We should resume from that event ID.
   if [ -f "$channel_status_file" ] ; then
