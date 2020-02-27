@@ -82,6 +82,10 @@ usage() {
 	      after this timeout. Events that have not been processed
 	      will then be lost.
 
+	  --channels [channel-name]
+	      List your existing channels and their properties.
+	      If the channel name is given, list channel(s) with that name.
+
 	Examples:
 	  $0 ... (todo)
 
@@ -202,6 +206,23 @@ while [ $# -gt 0 ] ; do
       channel_timeout="$2"
       shift ; shift
       ;;
+    --channels )
+      command=channels
+      case $2 in
+        --* )
+          # Is next option, not a channel name
+          ;;
+        '' )
+          # No more arguments
+          ;;
+        * )
+          # This must be a channel name
+          channelname="$2"
+          shift
+          ;;
+      esac
+      shift
+      ;;
     --debug )
       debug=true
       shift
@@ -269,7 +290,7 @@ case $command in
     echo "ERROR. Please specify a command. See --help for more information."
     exit 1
     ;;
-  whoami )
+  whoami | channels )
     ;;
   * )
     echo "ERROR: command '$command' is not implemented."
@@ -418,6 +439,20 @@ get_channel_by_name () {
   echo "$channel"
 }
 
+get_channels () {
+  local channelname="$1"
+  local query=''
+  if [ -n "$channelname" ] ; then
+    query="?client-id=$channelname"
+  fi
+  (
+    $debug && set -x
+    curl "${curl_authorization[@]}" \
+         "${curl_options_common[@]}" \
+         -X GET "$api/events/channels${query}"
+  ) \
+  | jq -r '.[]'
+}
 
 channel_subscribe () {
   local channel="$1"
@@ -814,6 +849,9 @@ case $command in
     done
     echo "Following..."
     follow_channel "$channel"
+    ;;
+  channels )
+    get_channels "$channelname"
     ;;
   * )
     echo "Command '$command' is not implemented (yet)."
