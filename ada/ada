@@ -372,6 +372,32 @@ get_files_in_dir () {
 }
 
 
+get_checksums () {
+  local path="$1"
+  encoded_path=$(urlencode "$path")
+  (
+    $debug && set -x   # If --debug is specified, show (only) curl command
+    curl "${curl_authorization[@]}" \
+         "${curl_options_common[@]}" \
+         -X GET "$api/namespace/$encoded_path?children=false&locality=false&locations=false&qos=false"
+  ) \
+  | jq -r '.pnfsId' \
+  | {
+      read pnfsid
+      if [ -z "$pnfsid" ] ; then
+        continue  # skip to next $path
+      fi
+      (
+        $debug && set -x
+        curl "${curl_authorization[@]}" \
+             "${curl_options_common[@]}" \
+             -X GET "$api/id/$pnfsid"
+      ) \
+      | jq -r '.checksums | .[] | [ .type , .value ] | @tsv'
+    }
+}
+
+
 get_channel_by_name () {
   local channelname="$1"
   channel=$(
@@ -629,7 +655,7 @@ case $command in
                    | @tsv' \
           | sed -e $'s@\tREGULAR@@' \
                 -e $'s@\tDIR@/@' \
-                -e $'s@\tLINK@@'
+                -e $'s@\tLINK@§@'
           # Note: it would be better to use strflocaltime instead of strftime,
           # but that requires a newer version of jq than Centos 7 has.
           ;;
@@ -688,30 +714,30 @@ case $command in
     ;;
   checksum )
     while read path ; do
-      encoded_path=$(urlencode "$path")
-      (
-        $debug && set -x   # If --debug is specified, show (only) curl command
-        curl "${curl_authorization[@]}" \
-             "${curl_options_common[@]}" \
-             -X GET "$api/namespace/$encoded_path?children=false&locality=false&locations=false&qos=false"
-      ) \
-      | jq -r '.pnfsId' \
-      | { 
-          read pnfsid
+      type=$(pathtype "$path")
+      case $type in
+        DIR )
+          # It's a directory. Show checksums for files in directory.
+          get_files_in_dir "$path" \
+          | while read filename ; do
+            echo -n -e "$path/$filename\t"
+            get_checksums "$path/$filename" | sed -e 's/\t/=/' | tr '\n' '\t'
+            echo
+          done
+          ;;
+        REGULAR )
+          # It's a file. Show its checksums.
           echo -n -e "$path\t"
-          if [ -z "$pnfsid" ] ; then
-            continue  # skip to next $path
-          fi
-          (
-            $debug && set -x
-            curl "${curl_authorization[@]}" \
-                 "${curl_options_common[@]}" \
-                 -X GET "$api/id/$pnfsid"
-          ) \
-          | jq -r '.checksums | .[] | [ .type , .value ] | @tsv' \
-          | sed -e 's/\t/=/' | tr '\n' '\t'
+          get_checksums "$path" | sed -e 's/\t/=/' | tr '\n' '\t'
           echo
-        }
+          ;;
+        '' | LINK )
+          # No valid object. Do nothing.
+          ;;
+        * )
+          echo "Unknown object type '$type'. Please create an issue for this in Github."
+          ;;
+      esac
     done <<<"$pathlist" \
     | column -t -s $'\t'
     ;;
