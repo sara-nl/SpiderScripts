@@ -518,8 +518,8 @@ follow_channel () {
   mkdir -p ~/.ada/channels
   chmod 700 ~/.ada
   chmod 700 ~/.ada/channels
-  short_channel_name=$(basename "$channel")
-  channel_status_file=~/.ada/channels/"channel-$short_channel_name"
+  channel_id=$(basename "$channel")
+  channel_status_file=~/.ada/channels/"channel-status-$channel_id"
   # If a file exists with the last event for this channel,
   # We should resume from that event ID.
   if [ -f "$channel_status_file" ] ; then
@@ -832,6 +832,10 @@ case $command in
              -X POST "$api/events/channels" -d "{\"client-id\":\"$channelname\"}"
       )
       channel=$(get_channel_by_name "$channelname")
+      # There is no API call to translate channel ID back to
+      # channel name. So we keep track of the name ourselves.
+      channel_id=$(basename "$channel")
+      echo "$channelname" > ~/.ada/channels/"channel-name-$channel_id"
       # Set channel timeout
       (
        	$debug && set -x
@@ -851,7 +855,50 @@ case $command in
     follow_channel "$channel"
     ;;
   channels )
-    get_channels "$channelname"
+    first=true
+    get_channels "$channelname" \
+    | while read channel ; do
+      # Show empty line between channels
+      ! $first && echo
+      first=false
+      # Show channel ID
+      echo -n $(basename "$channel")
+      # Show channel name, if that was saved locally
+      # (There is no API call to retrieve the channel name)
+      channel_id=$(basename "$channel")
+      if [ -f ~/.ada/channels/"channel-name-$channel_id" ] ; then
+        channelname=$(< ~/.ada/channels/"channel-name-$channel_id")
+        echo -n "  name=$channelname"
+      fi
+      # Show channel properties (for now only the timeout)
+      channel_properties=$(
+         curl "${curl_authorization[@]}" \
+              "${curl_options_common[@]}" \
+              -X GET "$channel" \
+         | jq -r 'to_entries[] | [.key, .value] | @tsv' \
+         | tr '\t' '='
+      )
+      # Show event ID, if available
+      channel_status_file=~/.ada/channels/"channel-status-$channel_id"
+      if [ -f "$channel_status_file" ] ; then
+        last_event_id=$(grep -E --max-count=1 --only-matching \
+                             '[0-9]+' "$channel_status_file")
+        if [ -n "$last_event_id" ] ; then
+          echo -n "  last-event-id=$last_event_id"
+        fi
+      fi
+      echo "  $channel_properties"
+      # Next, show all subscribed paths in this channel.
+      get_subscriptions_by_channel "$channel" \
+      | while read subscription ; do
+        {
+          echo -n $(basename "$subscription") " path:"
+          get_path_from_subscription "$subscription"
+        }
+      done \
+      | sort -k 2,2 \
+      | sed -e 's/^/  /'
+    done
     ;;
   * )
     echo "Command '$command' is not implemented (yet)."
