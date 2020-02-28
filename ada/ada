@@ -21,9 +21,9 @@ usage() {
 	  
 	  --api        - The dCache API URL to talk to.
 	  --tokenfile  - A file containing the token.
-                     This can be an rclone config file with a
-                     bearer_token statement, or a plain file with
-                     only the token.
+	                 This can be an rclone config file with a
+	                 bearer_token statement, or a plain file with
+	                 only the token.
 	  --debug      - Show what's going on.
 
 	Commands are:
@@ -54,7 +54,7 @@ usage() {
 	      we suggest you try rclone.
 
 	  --checksum <file>
-	      Show MD5/Adler32 checksums for file
+	      Show MD5/Adler32 checksums for file.
 	  --checksum <directory>
 	      Show MD5/Adler32 checksums for files in directory.
 	  --checksum --from-file <file-list>
