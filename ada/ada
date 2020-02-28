@@ -28,6 +28,9 @@ usage() {
 
 	Commands are:
 
+	  --help
+	      Show this helptext.
+
 	  --whoami
 	      Show how dCache identifies you.
 
@@ -114,10 +117,17 @@ for configfile in ${configfiles[@]} ; do
   fi
 done
 
+# If no arguments are provided, show help.
+if [ -z "$1" ] ; then
+  usage
+fi
 
 # Process command line arguments
 while [ $# -gt 0 ] ; do
   case "$1" in
+    --help | -help | -h )
+      usage
+      ;;
     --tokenfile )
       tokenfile="$2"
       shift ; shift
