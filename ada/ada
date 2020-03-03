@@ -356,6 +356,10 @@ curl_options_common=(
                       -H "accept: application/json"
                       --fail --silent --show-error
                     )
+curl_options_no_errors=(
+                      -H "accept: application/json"
+                      --fail --silent
+                    )
 curl_options_post=(
                     -H "content-type: application/json"
                   )
@@ -379,7 +383,7 @@ urlencode () {
 pathtype () {
   local path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
-       "${curl_options_common[@]}" \
+       "${curl_options_no_errors[@]}" \
        -X GET "$api/namespace/$path?children=false&locality=false&locations=false&qos=false" \
   | jq -r .fileType
 }
@@ -499,6 +503,7 @@ get_subscriptions_by_channel () {
 
 
 list_subscription () {
+  # Shows all properties of a subscription. (Could be only a path.)
   local subscription="$1"
   (
     $debug && set -x
@@ -506,7 +511,8 @@ list_subscription () {
          "${curl_options_common[@]}" \
          -X GET "$subscription"
   ) \
-  | jq .
+  | jq -r 'to_entries[] | [.key, .value] | @tsv' \
+  | tr '\t' '='
 }
 
 
@@ -737,12 +743,21 @@ case $command in
     | jq -r .status
     ;;
   mv )
+    # dCache may overwrite an empty directory.
+    # If target already exists, quit.
+    case $(pathtype "$destination") in
+      DIR | REGULAR | LINK )
+        echo "ERROR: target '$destination' already exists."
+        exit 1
+        ;;
+    esac
+    encoded_path=$(urlencode "$path")
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
       curl "${curl_authorization[@]}" \
            "${curl_options_common[@]}" \
            "${curl_options_post[@]}" \
-           -X POST "$api/namespace/$path" \
+           -X POST "$api/namespace/$encoded_path" \
            -d "{\"action\":\"mv\",\"destination\":\"$destination\"}"
     ) \
     | jq -r .status
@@ -902,8 +917,8 @@ case $command in
       get_subscriptions_by_channel "$channel" \
       | while read subscription ; do
         {
-          echo -n $(basename "$subscription") " path:"
-          get_path_from_subscription "$subscription"
+          echo -n $(basename "$subscription") " "
+          list_subscription "$subscription"
         }
       done \
       | sort -k 2,2 \
