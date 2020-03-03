@@ -100,6 +100,7 @@ usage() {
   exit 1
 }
 
+
 # Set default values
 api=
 debug=false
@@ -244,9 +245,19 @@ while [ $# -gt 0 ] ; do
   esac
 done
 
+
+
 #
 # Validate input
 #
+
+# We need some external commands.
+for external_command in curl jq sed grep column sort tr ; do
+  if ! command -v "$external_command" >/dev/null 2>&1 ; then
+    echo >&2 "ERROR: I require '$external_command' but it's not installed."
+    exit 1
+  fi
+done
 
 if [ -z "$tokenfile" ] ; then
   echo "ERROR: no tokenfile specified."
