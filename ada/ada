@@ -15,18 +15,34 @@
 usage() {
   cat <<-EOF
 	ADA - Access dCache API to manage your data.
-	Usage: $0 [generic options...] <command> [command options]
+	Usage: $0 [general options...] [authentication] <command> [command options]
 
-	Generic options are:
-	  
-	  --api        - The dCache API URL to talk to.
-	  --tokenfile  - A file containing the token.
-	                 This can be an rclone config file with a
-	                 bearer_token statement, or a plain file with
-	                 only the token.
-	  --debug      - Show what's going on.
+	General options:
 
-	Commands are:
+	  --api
+	      The dCache API URL to talk to.
+
+	  --debug
+	      Show what's going on.
+
+	Authentication options:
+
+	  --tokenfile <filename>
+	      Authenticate with the token in this file.
+	      This can be an rclone config file with a
+	      bearer_token statement, or a plain file with
+	      only the token.
+
+	  --netrc [filename]
+	      Authenticate with a curl netrc file
+	      containing username and password.
+	      If no filename was provided, use ~/.netrc.
+
+	  --proxy [filename]
+	      Authenticate with a Grid proxy.
+	      If no filename was provided, use \$X509_USER_PROXY.
+
+	Commands:
 
 	  --help
 	      Show this helptext.
@@ -108,6 +124,7 @@ path=
 recursive=false
 command=
 channel_timeout=3600
+auth_method=
 
 # Load defaults from configuration file if exists
 declare -a configfiles=( /etc/ada.conf ~/.ada/ada.conf )
@@ -130,8 +147,39 @@ while [ $# -gt 0 ] ; do
       usage
       ;;
     --tokenfile )
+      auth_method=token
       tokenfile="$2"
       shift ; shift
+      ;;
+    --netrc )
+      auth_method=netrc
+      case $2 in
+        --* | '' )
+          # Next argument is another option or absent; not a file name
+          netrcfile=~/.netrc
+          ;;
+	* )
+          # This must be a file name
+          netrcfile="$2"
+          shift
+          ;;
+      esac
+      shift
+      ;;
+    --proxy )
+      auth_method=proxy
+      case $2 in
+        --* | '' )
+          # Next argument is another option or absent; not a file name
+          proxyfile="$X509_USER_PROXY"
+          ;;
+	* )
+          # This must be a file name
+          proxyfile="$2"
+          shift
+          ;;
+      esac
+      shift
       ;;
     --api )
       api="$2"
@@ -220,11 +268,8 @@ while [ $# -gt 0 ] ; do
     --channels )
       command=channels
       case $2 in
-        --* )
-          # Is next option, not a channel name
-          ;;
-        '' )
-          # No more arguments
+        --* | '' )
+          # Next argument is another option or absent; not a channel name
           ;;
         * )
           # This must be a channel name
@@ -259,25 +304,45 @@ for external_command in curl jq sed grep column sort tr ; do
   fi
 done
 
-if [ -z "$tokenfile" ] ; then
-  echo "ERROR: no tokenfile specified."
-  exit 1
-fi
+case $auth_method in
+  token )
+    if [ -z "$tokenfile" ] ; then
+      echo "ERROR: no tokenfile specified."
+      exit 1
+    fi
 
-token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
-if [ $(wc -l <<<"$token") -gt 1 ] ; then
-  echo "ERROR: file '$tokenfile' contains multiple tokens."
-  exit 1
-fi
-# If it was not an rclone config file, it may be a 
-# plain text file with only the token.
-if [ -z "$token" ] ; then
-  token=$(head -n 1 "$tokenfile")
-fi
-if [ -z "$token" ] ; then
-  echo "ERROR: could not read token from tokenfile."
-  exit 1
-fi
+    token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
+    if [ $(wc -l <<<"$token") -gt 1 ] ; then
+      echo "ERROR: file '$tokenfile' contains multiple tokens."
+      exit 1
+    fi
+    # If it was not an rclone config file, it may be a 
+    # plain text file with only the token.
+    if [ -z "$token" ] ; then
+      token=$(head -n 1 "$tokenfile")
+    fi
+    if [ -z "$token" ] ; then
+      echo "ERROR: could not read token from tokenfile."
+      exit 1
+    fi
+    ;;
+  netrc )
+    if [ ! -f "$netrcfile" ] ; then
+      echo "ERROR: could not open netrc file '$netrcfile'."
+      exit 1
+    fi
+    ;;
+  proxy )
+    if [ ! -f "$proxyfile" ] ; then
+      echo "ERROR: could not open proxy '$proxyfile'."
+      exit 1
+    fi    
+    ;;
+  * )
+    echo "ERROR: you have to specify a valid authentication method."
+    exit 1
+    ;;
+esac
 
 
 case $command in
@@ -336,31 +401,42 @@ fi
 #
 
 # Construct the authorization part of the curl command.
-# We can't specify the token as a command line argument,
-# because others could read that with the ps command.
-# So we have to put the authorization header in a temporary file.
-mkdir -p ~/.ada/headers
-chmod 700 ~/.ada
-chmod 700 ~/.ada/headers
-curl_authorization_header_file=$(mktemp -p ~/.ada/headers authorization_header_XXXXXXXXXXXX)
-chmod 600 "$curl_authorization_header_file"
-# File should be cleaned up when we're done,
-# unless we're debugging
-if $debug ; then
-  trap "{
-          echo
-          echo 'WARNING: in debug mode, the authorization header file' \
-               '$curl_authorization_header_file will not be cleaned up.' \
-               'Please clean it up yourself.'
-        }" EXIT
-else
-  trap 'rm -f "$curl_authorization_header_file"' EXIT
-fi
-
-# Save the header in the file
-echo "header \"Authorization: Bearer $token\"" > "$curl_authorization_header_file"
-# Refer to the file with the header
-curl_authorization=( "--config" "$curl_authorization_header_file" )
+case $auth_method in
+  token )
+    # We can't specify the token as a command line argument,
+    # because others could read that with the ps command.
+    # So we have to put the authorization header in a temporary file.
+    mkdir -p ~/.ada/headers
+    chmod 700 ~/.ada
+    chmod 700 ~/.ada/headers
+    curl_authorization_header_file=$(mktemp -p ~/.ada/headers authorization_header_XXXXXXXXXXXX)
+    chmod 600 "$curl_authorization_header_file"
+    # File should be cleaned up when we're done,
+    # unless we're debugging
+    if $debug ; then
+      trap "{
+              echo
+              echo 'WARNING: in debug mode, the authorization header file' \
+                   '$curl_authorization_header_file will not be cleaned up.' \
+                   'Please clean it up yourself.'
+            }" EXIT
+    else
+      trap 'rm -f "$curl_authorization_header_file"' EXIT
+    fi
+    # Save the header in the file
+    echo "header \"Authorization: Bearer $token\"" > "$curl_authorization_header_file"
+    # Refer to the file with the header
+    curl_authorization=( "--config" "$curl_authorization_header_file" )
+    ;;
+  netrc )
+    curl_authorization=( "--netrc-file" "$netrcfile" )
+    ;;
+  proxy )
+    curl_authorization=( --capath /etc/grid-security/certificates 
+                         --cert   "$proxyfile"
+                         --cacert "$proxyfile" )
+    ;;
+esac
 
 # Other curl arguments
 curl_options_common=(
