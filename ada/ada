@@ -158,7 +158,7 @@ while [ $# -gt 0 ] ; do
           # Next argument is another option or absent; not a file name
           netrcfile=~/.netrc
           ;;
-	* )
+        * )
           # This must be a file name
           netrcfile="$2"
           shift
@@ -173,7 +173,7 @@ while [ $# -gt 0 ] ; do
           # Next argument is another option or absent; not a file name
           proxyfile="$X509_USER_PROXY"
           ;;
-	* )
+        * )
           # This must be a file name
           proxyfile="$2"
           shift
