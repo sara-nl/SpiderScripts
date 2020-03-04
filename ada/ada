@@ -11,6 +11,7 @@
 # 2020-02-14 - Onno    - Support for server-sent events
 # 2020-02-18 - Onno    - Recursion with server-sent events
 # 2020-02-24 - Onno    - Don't show bearer tokens on command line
+# 2020-03-04 - Onno    - Added X509 proxy authentication and netrc authentication
 
 usage() {
   cat <<-EOF
