@@ -337,7 +337,12 @@ case $auth_method in
     if [ ! -f "$proxyfile" ] ; then
       echo "ERROR: could not open proxy '$proxyfile'."
       exit 1
-    fi    
+    fi
+    if [ ! -d /etc/grid-security/certificates ] ; then
+      echo "ERROR: could not find /etc/grid-security/certificates/." \
+           "Please install the Grid root certificates if you want to use your proxy."
+      exit 1
+    fi
     ;;
   * )
     echo "ERROR: you have to specify a valid authentication method."
