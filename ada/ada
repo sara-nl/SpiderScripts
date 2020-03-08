@@ -415,7 +415,10 @@ case $auth_method in
     mkdir -p ~/.ada/headers
     chmod 700 ~/.ada
     chmod 700 ~/.ada/headers
-    curl_authorization_header_file=$(mktemp -p ~/.ada/headers authorization_header_XXXXXXXXXXXX)
+    case $OSTYPE in
+      darwin* )  curl_authorization_header_file=$(mktemp ~/.ada/headers/authorization_header_XXXXXXXXXXXX)     ;;
+      * )        curl_authorization_header_file=$(mktemp -p ~/.ada/headers authorization_header_XXXXXXXXXXXX)  ;;
+    esac
     chmod 600 "$curl_authorization_header_file"
     # File should be cleaned up when we're done,
     # unless we're debugging
