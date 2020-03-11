@@ -12,6 +12,7 @@
 # 2020-02-18 - Onno    - Recursion with server-sent events
 # 2020-02-24 - Onno    - Don't show bearer tokens on command line
 # 2020-03-04 - Onno    - Added X509 proxy authentication and netrc authentication
+# 2020-03-11 - Onno    - Added recursive deletes
 
 usage() {
   cat <<-EOF
@@ -65,10 +66,11 @@ usage() {
 	  --mv <file|directory> <destination>
 	      Rename or move a file or directory.
 
-	  --delete <file|directory>
-	      Delete a file or (empty) directory.
-	      To recursively delete a directory and its contents,
-	      we suggest you try rclone.
+	  --delete <file|directory> [--recursive [--force]]
+	      Delete a file or directory.
+	      To recursively delete a directory and its ALL of its
+	      contents, add --recursive. You will need to confirm
+	      deletion of each subdir, unless you add --force.
 
 	  --checksum <file>
 	      Show MD5/Adler32 checksums for file.
@@ -121,9 +123,6 @@ usage() {
 # Set default values
 api=
 debug=false
-path=
-recursive=false
-command=
 channel_timeout=3600
 auth_method=
 
@@ -140,6 +139,12 @@ done
 if [ -z "$1" ] ; then
   usage
 fi
+
+# Initialize some vars we don't want to be overridden in config files
+command=
+path=
+recursive=false
+force=false
 
 # Process command line arguments
 while [ $# -gt 0 ] ; do
@@ -260,6 +265,10 @@ while [ $# -gt 0 ] ; do
       ;;
     --recursive )
       recursive=true
+      shift
+      ;;
+    --force )
+      force=true
       shift
       ;;
     --timeout )
@@ -500,6 +509,69 @@ get_files_in_dir () {
        "${curl_options_common[@]}" \
        -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
   | jq -r '.children | .[] | if .fileType == "REGULAR" then .fileName else empty end'
+}
+
+
+get_children () {
+  local path=$(urlencode "$1")
+  curl "${curl_authorization[@]}" \
+       "${curl_options_common[@]}" \
+       -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
+  | jq -r '.children | .[] | .fileName'
+}
+
+
+dir_has_items () {
+  path="$1"
+  get_children "$path" | grep --silent .
+}
+
+
+get_confirmation () {
+  prompt="$1"
+  while true ; do
+    # We read the answer from tty, otherwise strange things would happen.
+    read -p "$prompt (N/y) " -n1 answer < /dev/tty
+    echo
+    case $answer in
+      Y | y )       return 0  ;;
+      N | n | '' )  return 1  ;;
+    esac
+  done
+}
+
+
+delete_path () {
+  local path="$1"
+  local recursive="$2"
+  local force="$3"
+  case $recursive in
+    true | false ) ;;  # No problem
+    * )
+      echo "ERROR: delete_path: recursive is '$recursive' but should be true or false."
+      exit 1
+      ;;
+  esac
+  path_type=$(pathtype "$path")
+  # Are there children in this path we need to delete too?
+  if $recursive && [ "$path_type" = "DIR" ] ; then
+    if $force || get_confirmation "Delete all items in $path?" ; then
+      get_children "$path" \
+      | while read child ; do
+        delete_path "$path/$child" "$recursive" "$force"
+      done
+    fi
+  fi
+  # Done with the children, now we delete the parent.
+  echo -n "Deleting $path - "
+  encoded_path=$(urlencode "$path")
+  (
+    $debug && set -x
+    curl "${curl_authorization[@]}" \
+         "${curl_options_common[@]}" \
+         -X DELETE "$api/namespace/$encoded_path"
+  ) \
+  | jq -r .status
 }
 
 
@@ -859,14 +931,20 @@ case $command in
     | jq -r .status
     ;;
   delete )
-    encoded_path=$(urlencode "$path")
-    (
-      $debug && set -x   # If --debug is specified, show (only) curl command
-      curl "${curl_authorization[@]}" \
-           "${curl_options_common[@]}" \
-           -X DELETE "$api/namespace/$encoded_path"
-    ) \
-    | jq -r .status
+    case $(pathtype "$path") in
+      REGULAR | LINK )
+        delete_path "$path" "$recursive" "$force"
+        ;;
+      DIR )
+        if $recursive || ! dir_has_items "$path" ; then
+          delete_path "$path" "$recursive" "$force"
+        else
+          echo "WARNING: directory '$path' is not empty. If you want to remove it" \
+               "and its contents, you can add the --recursive argument."
+          exit 1
+        fi
+        ;;
+    esac
     ;;
   checksum )
     while read path ; do
