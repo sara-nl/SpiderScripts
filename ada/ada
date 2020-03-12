@@ -68,7 +68,7 @@ usage() {
 
 	  --delete <file|directory> [--recursive [--force]]
 	      Delete a file or directory.
-	      To recursively delete a directory and its ALL of its
+	      To recursively delete a directory and ALL of its
 	      contents, add --recursive. You will need to confirm
 	      deletion of each subdir, unless you add --force.
 
@@ -489,7 +489,7 @@ pathtype () {
   local path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
        "${curl_options_no_errors[@]}" \
-       -X GET "$api/namespace/$path?children=false&locality=false&locations=false&qos=false" \
+       -X GET "$api/namespace/$path" \
   | jq -r .fileType
 }
 
@@ -498,7 +498,7 @@ get_subdirs () {
   local path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
        "${curl_options_common[@]}" \
-       -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
+       -X GET "$api/namespace/$path?children=true" \
   | jq -r '.children | .[] | if .fileType == "DIR" then .fileName else empty end'
 }
 
@@ -507,7 +507,7 @@ get_files_in_dir () {
   local path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
        "${curl_options_common[@]}" \
-       -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
+       -X GET "$api/namespace/$path?children=true" \
   | jq -r '.children | .[] | if .fileType == "REGULAR" then .fileName else empty end'
 }
 
@@ -516,14 +516,14 @@ get_children () {
   local path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
        "${curl_options_common[@]}" \
-       -X GET "$api/namespace/$path?children=true&locality=false&locations=false&qos=false" \
+       -X GET "$api/namespace/$path?children=true" \
   | jq -r '.children | .[] | .fileName'
 }
 
 
 dir_has_items () {
   path="$1"
-  get_children "$path" | grep --silent .
+  get_children "$path" | grep --silent --max-count 1 '.'
 }
 
 
@@ -553,25 +553,35 @@ delete_path () {
       ;;
   esac
   path_type=$(pathtype "$path")
+  local aborted=false
   # Are there children in this path we need to delete too?
   if $recursive && [ "$path_type" = "DIR" ] ; then
     if $force || get_confirmation "Delete all items in $path?" ; then
-      get_children "$path" \
-      | while read child ; do
-        delete_path "$path/$child" "$recursive" "$force"
-      done
+      while read child ; do
+        delete_path "$path/$child" "$recursive" "$force" \
+        || aborted=true
+      done < <(get_children "$path")
+    else
+      # If the user pressed 'n', dir contents will not be deleted;
+      # In that case we should not delete the dir either.
+      aborted=true
     fi
   fi
-  # Done with the children, now we delete the parent.
-  echo -n "Deleting $path - "
-  encoded_path=$(urlencode "$path")
-  (
-    $debug && set -x
-    curl "${curl_authorization[@]}" \
-         "${curl_options_common[@]}" \
-         -X DELETE "$api/namespace/$encoded_path"
-  ) \
-  | jq -r .status
+  # Done with the children, now we delete the parent (if not aborted).
+  if $aborted ; then
+    echo "Deleting $path - aborted."
+    return 1  # Tell higher level that user aborted
+  else
+    echo -n "Deleting $path - "
+    encoded_path=$(urlencode "$path")
+    (
+      $debug && set -x
+      curl "${curl_authorization[@]}" \
+           "${curl_options_common[@]}" \
+           -X DELETE "$api/namespace/$encoded_path"
+    ) \
+    | jq -r .status
+  fi
 }
 
 
@@ -582,7 +592,7 @@ get_checksums () {
     $debug && set -x   # If --debug is specified, show (only) curl command
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
-         -X GET "$api/namespace/$encoded_path?children=false&locality=false&locations=false&qos=false"
+         -X GET "$api/namespace/$encoded_path"
   ) \
   | jq -r '.pnfsId' \
   | {
@@ -829,7 +839,7 @@ case $command in
           $debug && set -x   # If --debug is specified, show (only) curl command
           curl "${curl_authorization[@]}" \
                "${curl_options_common[@]}" \
-               -X GET "$api/namespace/$(urlencode "$path")?children=true&locality=false&locations=false&qos=false"
+               -X GET "$api/namespace/$(urlencode "$path")?children=true"
         ) \
         | jq -r '.children | .[] | [ .fileName , .fileType ] | @tsv' \
         | sed -e $'s@\tREGULAR@@' \
@@ -862,7 +872,7 @@ case $command in
             $debug && set -x   # If --debug is specified, show (only) curl command
             curl "${curl_authorization[@]}" \
                  "${curl_options_common[@]}" \
-                 -X GET "$api/namespace/$encoded_path?children=true&locality=true&locations=false&qos=true"
+                 -X GET "$api/namespace/$encoded_path?children=true&locality=true&qos=true"
           ) \
           | jq -r '.children | .[]
                    | [ .fileName ,
@@ -883,7 +893,7 @@ case $command in
             $debug && set -x   # If --debug is specified, show (only) curl command
             curl "${curl_authorization[@]}" \
                  "${curl_options_common[@]}" \
-                  -X GET "$api/namespace/$encoded_path?children=false&locality=true&locations=false&qos=true"
+                  -X GET "$api/namespace/$encoded_path?locality=true&qos=true"
           ) \
           | jq -r '[ .size ,
                      (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ,
