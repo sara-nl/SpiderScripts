@@ -13,6 +13,7 @@
 # 2020-02-24 - Onno    - Don't show bearer tokens on command line
 # 2020-03-04 - Onno    - Added X509 proxy authentication and netrc authentication
 # 2020-03-11 - Onno    - Added recursive deletes
+# 2020-03-13 - Onno    - Get server-sent events for files being staged
 
 usage() {
   cat <<-EOF
@@ -103,6 +104,17 @@ usage() {
 	      a channel is not being followed, dCache may clean it up
 	      after this timeout. Events that have not been processed
 	      will then be lost.
+
+	  --report-staged <channel-name> <path-to-follow> [--recursive] [--timeout s]
+	      Subscribe to stage (bring online) events in a directory,
+	      using server-sent events (SSE).
+	      This command is slightly different from --events:
+	      When you start it, the files in the scope that are already
+	      online, will be listed. You can then submit jobs to process
+	      them. When all files that were already online have been
+	      listed, the command will keep listening and reporting all
+	      files that are staged.
+	      The --recursive and --timeout flags work as with --events.
 
 	  --channels [channel-name]
 	      List your existing channels and their properties.
@@ -263,6 +275,12 @@ while [ $# -gt 0 ] ; do
       path="$3"
       shift ; shift ; shift
       ;;
+    --report-staged )
+      command=report-staged
+      channelname="$2"
+      path="$3"
+      shift ; shift ; shift
+      ;;
     --recursive )
       recursive=true
       shift
@@ -361,7 +379,7 @@ esac
 
 
 case $command in
-  list | mkdir | mv | delete | events )
+  list | mkdir | mv | delete | events | report-staged )
     if [[ -z $path || $path =~ ^-- ]] ; then
       echo "ERROR: command $command requires a path."
       exit 1
@@ -494,6 +512,20 @@ pathtype () {
 }
 
 
+is_online () {
+  # Checks whether a file is online.
+  # The locality should be ONLINE or ONLINE_AND_NEARLINE.
+  # Also, the QoS should contain 'disk', otherwise the file
+  # might be purged very soon!
+  local path=$(urlencode "$1")
+  curl "${curl_authorization[@]}" \
+       "${curl_options_no_errors[@]}" \
+       -X GET "$api/namespace/$path?locality=true&qos=true" \
+  | jq -r -c '[ .fileLocality, .currentQos ]' \
+  | grep --silent 'ONLINE.*disk'
+}
+
+
 get_subdirs () {
   local path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
@@ -570,7 +602,9 @@ delete_path () {
   # Done with the children, now we delete the parent (if not aborted).
   if $aborted ; then
     echo "Deleting $path - aborted."
-    return 1  # Tell higher level that user aborted
+    # Tell higher level that user aborted,
+    # because deleting the parent dir is useless.
+    return 1  
   else
     echo -n "Deleting $path - "
     encoded_path=$(urlencode "$path")
@@ -707,6 +741,10 @@ get_path_from_subscription () {
 
 
 follow_channel () {
+  # This function is used for two commands: --events and --report-staged.
+  # Much of the functionality is the same, but
+  # with --report-staged we're checking only whether files
+  # are being brought online.
   local channel="$1"
   declare -A subscriptions
   mkdir -p ~/.ada/channels
@@ -786,8 +824,26 @@ follow_channel () {
               else
                 cookie_string=
               fi
-              # Here comes the output.
-              echo -e "$event_type  ${path}/${object_name}  ${mask}${cookie_string}"
+              # Is the user doing --events or --report-staged? The output differs a lot.
+              case $command in
+                events )
+                  # Here comes the output.
+                  echo -e "$event_type  ${path}/${object_name}  ${mask}${cookie_string}"
+                  ;;
+                report-staged )
+                  # User wants to see only the staged files.
+                  if [ $(pathtype "${path}/${object_name}") = "REGULAR" ] ; then
+                    # Is it an attribute event?
+                    if grep --silent IN_ATTRIB <<<"$mask" ; then
+                      # Is the file online now?
+                      if is_online "${path}/${object_name}" ; then
+                        # We report it!
+                        echo -e "online  ${path}/${object_name}"
+                      fi
+                    fi
+                  fi
+                  ;;
+              esac
               #
               # When done with this event's data, save the event ID.
               # This can be used to resume the channel.
@@ -1029,7 +1085,7 @@ case $command in
     done <<<"$pathlist" \
     | column -t -s $'\t'  
     ;;
-  events )
+  events | report-staged )
     channel=$(get_channel_by_name "$channelname")
     if [ "$channel" = "" ] ; then
       # Channel doesn't exist; create it.
