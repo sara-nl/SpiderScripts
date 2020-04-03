@@ -14,6 +14,7 @@
 # 2020-03-04 - Onno    - Added X509 proxy authentication and netrc authentication
 # 2020-03-11 - Onno    - Added recursive deletes
 # 2020-03-13 - Onno    - Get server-sent events for files being staged
+# 2020-04-03 - Onno    - Add --stat to get all possible file/dir info
 
 usage() {
   cat <<-EOF
@@ -60,6 +61,9 @@ usage() {
 	      List a file or directory with details.
 	  --longlist --from-file <file-list>
 	      List the files or directories specified in the given file.
+
+	  --stat <file|directory>
+	      Show all details of file or dir.
 
 	  --mkdir <directory>
 	      Create a directory.
@@ -223,6 +227,11 @@ while [ $# -gt 0 ] ; do
         shift ; shift
       fi
       ;;
+    --stat )
+      command=stat
+      path="$2"
+      shift ; shift
+      ;;
     --mkdir )
       command=mkdir
       path="$2"
@@ -379,7 +388,7 @@ esac
 
 
 case $command in
-  list | mkdir | mv | delete | events | report-staged )
+  list | stat | mkdir | mv | delete | events | report-staged )
     if [[ -z $path || $path =~ ^-- ]] ; then
       echo "ERROR: command $command requires a path."
       exit 1
@@ -509,6 +518,15 @@ pathtype () {
        "${curl_options_no_errors[@]}" \
        -X GET "$api/namespace/$path" \
   | jq -r .fileType
+}
+
+
+get_pnfsid () {
+  local path=$(urlencode "$1")
+  curl "${curl_authorization[@]}" \
+       "${curl_options_no_errors[@]}" \
+       -X GET "$api/namespace/$path" \
+  | jq -r .pnfsId
 }
 
 
@@ -935,7 +953,7 @@ case $command in
                        .fileType ,
                        .size ,
                        (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ,
-                       .currentQos ,
+                       if .targetQos then (.currentQos + "→" + .targetQos) else .currentQos end ,
                        .fileLocality ]
                    | @tsv' \
           | sed -e $'s@\tREGULAR@@' \
@@ -953,7 +971,7 @@ case $command in
           ) \
           | jq -r '[ .size ,
                      (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ,
-                     .currentQos ,
+                     if .targetQos then (.currentQos + "→" + .targetQos) else .currentQos end ,
                      .fileLocality ]
                    | @tsv' \
           | sed -e "s@^@$path\t@"
@@ -963,6 +981,20 @@ case $command in
     | column -t -s $'\t' \
     | sort
     ;;    
+  stat )
+    pnfsid=$(get_pnfsid "$path")
+    if [ -z "$pnfsid" ] ; then
+      echo "ERROR: could not get file properties."
+      exit 1
+    fi
+    (
+      $debug && set -x
+      curl "${curl_authorization[@]}" \
+           "${curl_options_common[@]}" \
+           -X GET "$api/id/$pnfsid"
+    ) \
+    | jq .
+    ;;
   mkdir )
     parent=$(urlencode $(dirname "$path"))
     name=$(basename "$path")
@@ -1116,7 +1148,16 @@ case $command in
     for subscription in $(get_subscriptions_by_channel "$channel") ; do
       list_subscription "$subscription"
     done
-    echo "Following..."
+    case $command in
+      events )
+        echo "Following..."
+        ;;
+      report-staged )
+        echo "Listing files that are already online..."
+        TODO
+        echo "listening for files to come online..."
+        ;;
+    esac
     follow_channel "$channel"
     ;;
   channels )
