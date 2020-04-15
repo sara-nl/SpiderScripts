@@ -533,14 +533,12 @@ get_pnfsid () {
 is_online () {
   # Checks whether a file is online.
   # The locality should be ONLINE or ONLINE_AND_NEARLINE.
-  # Also, the QoS should contain 'disk', otherwise the file
-  # might be purged very soon!
   local path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
        "${curl_options_no_errors[@]}" \
        -X GET "$api/namespace/$path?locality=true&qos=true" \
-  | jq -r -c '[ .fileLocality, .currentQos ]' \
-  | grep --silent 'ONLINE.*disk'
+  | jq -r '.fileLocality' \
+  | grep --silent 'ONLINE'
 }
 
 
@@ -855,8 +853,9 @@ follow_channel () {
                     if grep --silent IN_ATTRIB <<<"$mask" ; then
                       # Is the file online now?
                       if is_online "${path}/${object_name}" ; then
-                        # We report it!
                         echo -e "online  ${path}/${object_name}"
+                      else
+                        echo -e "purged  ${path}/${object_name}"
                       fi
                     fi
                   fi
@@ -889,6 +888,34 @@ follow_channel () {
       esac
   done
 }
+
+
+list_online_files () {
+  local path="$1"
+  local recursive="$2"
+  case $recursive in
+    true | false ) ;;  # No problem
+    * )
+      echo "ERROR: list_online_files: recursive is '$recursive' but should be true or false."
+      exit 1
+      ;;
+  esac
+  # Show all files in this dir that are online.
+  get_files_in_dir "$path" \
+  | while read filename ; do
+    if is_online "${path}/${filename}" ; then
+      echo "online  ${path}/${filename}"
+    fi
+  done
+  # If recursion is requested, find online files in subdirs.
+  if $recursive ; then
+    get_subdirs "$path" \
+    | while read subdir ; do
+      list_online_files "$path/$subdir" "$recursive"
+    done
+  fi
+}
+
 
 
 #
@@ -1154,7 +1181,7 @@ case $command in
         ;;
       report-staged )
         echo "Listing files that are already online..."
-        TODO
+        list_online_files "$path" "$recursive"
         echo "listening for files to come online..."
         ;;
     esac
