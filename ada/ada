@@ -851,12 +851,19 @@ follow_channel () {
                   if [ $(pathtype "${path}/${object_name}") = "REGULAR" ] ; then
                     # Is it an attribute event?
                     if grep --silent IN_ATTRIB <<<"$mask" ; then
-                      # Is the file online now?
-                      if is_online "${path}/${object_name}" ; then
-                        echo -e "online  ${path}/${object_name}"
-                      else
-                        echo -e "purged  ${path}/${object_name}"
-                      fi
+                      # Show file properties (locality, QoS, name)
+                      encoded_path=$(urlencode "${path}/${object_name}")
+                      (
+                        $debug && set -x   # If --debug is specified, show (only) curl command
+                        curl "${curl_authorization[@]}" \
+                             "${curl_options_common[@]}" \
+                             -X GET "$api/namespace/$encoded_path?locality=true&qos=true"
+                      ) \
+                      | jq -r '[ .fileLocality ,
+                                 if .targetQos then (.currentQos + "→" + .targetQos) else .currentQos end ,
+                                 "'"${path}/${object_name}"'" ]
+                               | @tsv' \
+                      | sed -e 's/\t/  /g'
                     fi
                   fi
                   ;;
@@ -900,14 +907,23 @@ list_online_files () {
       exit 1
       ;;
   esac
-  # Show all files in this dir that are online.
-  get_files_in_dir "$path" \
-  | while read filename ; do
-    if is_online "${path}/${filename}" ; then
-      echo "online  ${path}/${filename}"
-    fi
-  done
-  # If recursion is requested, find online files in subdirs.
+  # Show online files in this dir with locality and QoS
+  encoded_path=$(urlencode "$path")
+  (
+    $debug && set -x   # If --debug is specified, show (only) curl command
+    curl "${curl_authorization[@]}" \
+         "${curl_options_common[@]}" \
+         -X GET "$api/namespace/$encoded_path?children=true&locality=true&qos=true"
+  ) \
+  | jq -r '.children 
+           | .[]
+           | if .fileType == "REGULAR" then . else empty end
+           | [ .fileLocality ,
+               if .targetQos then (.currentQos + "→" + .targetQos) else .currentQos end ,
+               "'"$path"'/" + .fileName ]
+           | @tsv' \
+  | sed -e 's/\t/  /g'
+  # If recursion is requested, do the same in subdirs.
   if $recursive ; then
     get_subdirs "$path" \
     | while read subdir ; do
@@ -1180,9 +1196,9 @@ case $command in
         echo "Following..."
         ;;
       report-staged )
-        echo "Listing files that are already online..."
+        echo "Listing initial file status..."
         list_online_files "$path" "$recursive"
-        echo "listening for files to come online..."
+        echo "Listening for file status changes..."
         ;;
     esac
     follow_channel "$channel"
