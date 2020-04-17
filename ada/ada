@@ -15,6 +15,7 @@
 # 2020-03-11 - Onno    - Added recursive deletes
 # 2020-03-13 - Onno    - Get server-sent events for files being staged
 # 2020-04-03 - Onno    - Add --stat to get all possible file/dir info
+# 2020-04-16 - Onno    - Add --recursive to --stage, --unstage, --checksum
 
 usage() {
   cat <<-EOF
@@ -76,24 +77,26 @@ usage() {
 	      To recursively delete a directory and ALL of its
 	      contents, add --recursive. You will need to confirm
 	      deletion of each subdir, unless you add --force.
+	      Please note, that dCache storage systems usually
+	      don't have an undelete option.
 
 	  --checksum <file>
 	      Show MD5/Adler32 checksums for file.
-	  --checksum <directory>
+	  --checksum <directory> [--recursive]
 	      Show MD5/Adler32 checksums for files in directory.
 	  --checksum --from-file <file-list>
 	      Show MD5/Adler32 checksums for files in the list.
 
 	  --stage <file>
 	      Stage a file from tape (restore, bring it online).
-	  --stage <directory>
+	  --stage <directory> [--recursive]
 	      Stage files in directory.
 	  --stage --from-file <file-list>
 	      Stage files in the list.
 
 	  --unstage <file>
 	      Release file so dCache may purge its online replica.
-	  --unstage <directory>
+	  --unstage <directory> [--recursive]
 	      Release files in directory.
 	  --unstage --from-file <file-list>
 	      Release files in the list.
@@ -113,11 +116,12 @@ usage() {
 	      Subscribe to stage (bring online) events in a directory,
 	      using server-sent events (SSE).
 	      This command is slightly different from --events:
-	      When you start it, the files in the scope that are already
-	      online, will be listed. You can then submit jobs to process
-	      them. When all files that were already online have been
-	      listed, the command will keep listening and reporting all
-	      files that are staged.
+	      When you start it, all files in the scope will be listed,
+	      including their locality and QoS. This allows your event
+	      handler to take actions, like starting jobs to process
+	      the files that are online.
+	      When all files have been listed, the command will keep
+	      listening and reporting all locality and QoS changes.
 	      The --recursive and --timeout flags work as with --events.
 
 	  --channels [channel-name]
@@ -635,29 +639,95 @@ delete_path () {
 }
 
 
-get_checksums () {
-  local path="$1"
-  encoded_path=$(urlencode "$path")
+set_qos () {
+  file="$1"
+  target="$2"
+  encoded_path=$(urlencode "$file")
+  $debug || echo -n "$file  "
   (
     $debug && set -x   # If --debug is specified, show (only) curl command
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
-         -X GET "$api/namespace/$encoded_path"
-  ) \
-  | jq -r '.pnfsId' \
-  | {
-      read pnfsid
-      if [ -z "$pnfsid" ] ; then
-        continue  # skip to next $path
-      fi
-      (
-        $debug && set -x
-        curl "${curl_authorization[@]}" \
-             "${curl_options_common[@]}" \
-             -X GET "$api/id/$pnfsid"
-      ) \
-      | jq -r '.checksums | .[] | [ .type , .value ] | @tsv'
-    }
+         "${curl_options_post[@]}" \
+         -X POST "$api/namespace/$encoded_path" \
+         -d "{\"action\":\"qos\",\"target\":\"$target\"}"
+  ) | jq -r .status
+}
+
+
+with_files_in_dir_do () {
+  # This will execute a function on all files in a dir.
+  # Recursion into subdirs is supported.
+  #
+  # Arguments:
+  # 1. The function to be executed on files;
+  # 2. The dir to work on
+  # 3. Recursive? (true|false)
+  # 3-x. Additional arguments to give to the function
+  #      (The first argument to the function is always the file name.)
+  #
+  local function="$1"
+  local path="$2"
+  local recursive="$3"
+  case $recursive in
+    true | false )  ;;  # No problem
+    * )
+      echo "Error in with_files_in_dir_do: recursive='$recursive'; should be true or false."
+      exit 1
+      ;;
+  esac
+  shift ; shift ; shift
+  # Run the given command on all files in this directory
+  get_files_in_dir "$path" \
+  | while read filename ; do
+    "$function" "$path/$filename" "$@"
+  done
+  # If needed, do the same in subdirs
+  if $recursive ; then
+    get_subdirs "$path" \
+    | while read subdir ; do
+      with_files_in_dir_do "$function" "$path/$subdir" "$recursive" "$@"
+    done
+  fi
+}
+
+
+get_checksums () {
+  # This function prints out all known checksums of a given file.
+  # A file can have Adler32 checksum, MD5 checksum, or both.
+  # Output format:
+  # /path/file  ADLER32=xxx  MD5_TYPE=xxxxx
+  local path="$1"
+  encoded_path=$(urlencode "$path")
+  {
+    echo -n -e "$path\t"
+    (
+      $debug && set -x   # If --debug is specified, show (only) curl command
+      curl "${curl_authorization[@]}" \
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$encoded_path"
+    ) \
+    | jq -r '.pnfsId' \
+    | {
+        read pnfsid
+        if [ -z "$pnfsid" ] ; then
+          continue  # skip to next $path
+        fi
+        (
+          $debug && set -x
+          curl "${curl_authorization[@]}" \
+               "${curl_options_common[@]}" \
+               -X GET "$api/id/$pnfsid"
+        ) \
+        | jq -r '.checksums | .[] | [ .type , .value ] | @tsv'
+        # jq output is tab separated:
+        # ADLER32\txxx
+        # MD5_TYPE\txxxxx
+      } \
+    | sed -e 's/\t/=/g' | tr '\n' '\t'
+    echo
+  } \
+  | sed -e 's/\t/  /g'
 }
 
 
@@ -1093,17 +1163,11 @@ case $command in
       case $type in
         DIR )
           # It's a directory. Show checksums for files in directory.
-          get_files_in_dir "$path" \
-          | while read filename ; do
-            echo -n -e "$path/$filename\t"
-            get_checksums "$path/$filename" | sed -e 's/\t/=/' | tr '\n' '\t'
-            echo
-          done
+          with_files_in_dir_do get_checksums "$path" "$recursive"
           ;;
         REGULAR )
           # It's a file. Show its checksums.
-          echo -n -e "$path\t"
-          get_checksums "$path" | sed -e 's/\t/=/' | tr '\n' '\t'
+          get_checksums "$path"
           echo
           ;;
         '' | LINK )
@@ -1113,8 +1177,7 @@ case $command in
           echo "Unknown object type '$type'. Please create an issue for this in Github."
           ;;
       esac
-    done <<<"$pathlist" \
-    | column -t -s $'\t'
+    done <<<"$pathlist"
     ;;
   stage | unstage )
     case $command in
@@ -1125,30 +1188,10 @@ case $command in
       type=$(pathtype "$path")
       case $type in
         DIR )
-          get_files_in_dir "$path" \
-          | while read filename ; do
-            encoded_path=$(urlencode "$path/$filename")
-            $debug || echo -n "$path/$filename  "
-            (
-              $debug && set -x   # If --debug is specified, show (only) curl command
-              curl "${curl_authorization[@]}" \
-                   "${curl_options_common[@]}" \
-                   "${curl_options_post[@]}" \
-                   -X POST "$api/namespace/$encoded_path" \
-                   -d "{\"action\":\"qos\",\"target\":\"$target\"}"
-            ) | jq -r .status
-          done
+          with_files_in_dir_do set_qos "$path" "$recursive" "$target"
           ;;
         REGULAR | LINK )
-          encoded_path=$(urlencode "$path")
-          (
-            $debug && set -x
-            curl "${curl_authorization[@]}" \
-                 "${curl_options_common[@]}" \
-                 "${curl_options_post[@]}" \
-                 -X POST "$api/namespace/$encoded_path" \
-                 -d "{\"action\":\"qos\",\"target\":\"$target\"}"
-          ) | jq -r .status
+          set_qos "$path" "$target"
           ;;
         '' )
           # No valid object. Do nothing.
