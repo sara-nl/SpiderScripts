@@ -421,6 +421,10 @@ case $auth_method in
            "Please install the Grid root certificates if you want to use your proxy."
       exit 1
     fi
+    # Check if the proxy is still valid; if not, exit after the error message.
+    if [ -x "$(command -v voms-proxy-info)" ]; then
+      voms-proxy-info --exists --file "$proxyfile" 1>&2 || exit 1
+    fi
     ;;
   * )
     echo "ERROR: you have to specify a valid authentication method."
