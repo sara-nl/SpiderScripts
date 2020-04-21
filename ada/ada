@@ -16,6 +16,7 @@
 # 2020-03-13 - Onno    - Get server-sent events for files being staged
 # 2020-04-03 - Onno    - Add --stat to get all possible file/dir info
 # 2020-04-16 - Onno    - Add --recursive to --stage, --unstage, --checksum
+# 2020-04-21 - Onno    - Improved error handling
 
 usage() {
   cat <<-EOF
@@ -161,6 +162,7 @@ if [ -z "$1" ] ; then
 fi
 
 # Initialize some vars we don't want to be overridden in config files
+script_dir=$(dirname "$0")
 command=
 path=
 recursive=false
@@ -337,6 +339,7 @@ done
 # Validate input
 #
 
+
 # We need some external commands.
 for external_command in curl jq sed grep column sort tr ; do
   if ! command -v "$external_command" >/dev/null 2>&1 ; then
@@ -344,6 +347,40 @@ for external_command in curl jq sed grep column sort tr ; do
     exit 1
   fi
 done
+
+
+check_macaroon () {
+  # Checks, if possible, whether a macaroon is still valid.
+  local macaroon="$1"
+  if [ -x "${script_dir}/view-macaroon" ] ; then
+    macaroon_viewer="${script_dir}/view-macaroon"
+  else
+    macaroon_viewer="$(command -v view-macaroon)"
+  fi
+  if [ -x "$macaroon_viewer" ] ; then
+    $debug && echo "Macaroon viewer: $macaroon_viewer"
+    endtime=$(
+      $macaroon_viewer <<<"$macaroon" \
+      | sed -n 's/cid before:// p'
+    )
+    if [ -n "$endtime" ] ; then
+      endtime_unix=$(date --date "$endtime" +%s)
+      now_unix=$(date +%s)
+      if [ $now_unix -gt $endtime_unix ] ; then
+        echo "ERROR: Macaroon is invalid: it expired on $endtime."
+        return 1
+      else
+        $debug && echo "Macaroon has not expired yet."
+      fi
+    else
+      $debug && echo "Could not get token endtime. It may not be a macaroon."
+    fi
+  else
+    $debug && echo "No view-macaroon found; unable to check macaroon."
+  fi
+  return 0
+}
+
 
 case $auth_method in
   token )
@@ -366,6 +403,7 @@ case $auth_method in
       echo "ERROR: could not read token from tokenfile."
       exit 1
     fi
+    check_macaroon "$token" || exit 1
     ;;
   netrc )
     if [ ! -f "$netrcfile" ] ; then
@@ -517,9 +555,14 @@ urlencode () {
 
 
 pathtype () {
+  # Get the type of an object. Possible outcomes:
+  # DIR     = directory
+  # REGULAR = file
+  # LINK    = symbolic link
+  # <empty> = something went wrong... no permission?
   local path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
-       "${curl_options_no_errors[@]}" \
+       "${curl_options_common[@]}" \
        -X GET "$api/namespace/$path" \
   | jq -r .fileType
 }
@@ -605,6 +648,12 @@ delete_path () {
       ;;
   esac
   path_type=$(pathtype "$path")
+  if [ -z "$path_type" ] ; then
+    # Could be a permission problem.
+    echo "Warning: could not get object type of '$path'."
+    # Quit the current object, but don't abort the rest
+    return 0
+  fi
   local aborted=false
   # Are there children in this path we need to delete too?
   if $recursive && [ "$path_type" = "DIR" ] ; then
@@ -733,15 +782,19 @@ get_checksums () {
 
 get_channel_by_name () {
   local channelname="$1"
-  channel=$(
-             (
-               $debug && set -x
-               curl "${curl_authorization[@]}" \
-                    "${curl_options_common[@]}" \
-                    -X GET "$api/events/channels?client-id=$channelname"
-              ) \
-              | jq -r '.[]'
-           )
+  # Many other API calls depend on this one.
+  # So if this one fails, we quit the script.
+  channel_json=$(
+                  $debug && set -x
+                  curl "${curl_authorization[@]}" \
+                       "${curl_options_common[@]}" \
+                       -X GET "$api/events/channels?client-id=$channelname"
+                ) \
+                || {
+                     echo "ERROR: unable to check for channels." 1>&2
+                     exit 1
+                   }
+  channel=$(jq -r '.[]' <<<"$channel_json")
   channel_count=$(wc -l <<<"$channel")
   if [ "$channel_count" -gt 1 ] ; then
     echo "ERROR: there is more than one channel with that name:"
@@ -1026,7 +1079,8 @@ case $command in
           $debug && set -x   # If --debug is specified, show (only) curl command
           curl "${curl_authorization[@]}" \
                "${curl_options_common[@]}" \
-               -X GET "$api/namespace/$(urlencode "$path")?children=true"
+               -X GET "$api/namespace/$(urlencode "$path")?children=true" \
+          || { echo "API call failed." 1>&2 ; exit 1 ; }
         ) \
         | jq -r '.children | .[] | [ .fileName , .fileType ] | @tsv' \
         | sed -e $'s@\tREGULAR@@' \
@@ -1042,7 +1096,8 @@ case $command in
         echo "$path"
         ;;
       '' )
-        # No valid object. Do nothing.
+        # The path may not exist, or we may not have permission to see it.
+        echo "Warning: could not determine object type for '$path'"
         ;;
       * )
         echo "Unknown object type '$type'. Please create an issue for this in Github."
@@ -1088,6 +1143,13 @@ case $command in
                      .fileLocality ]
                    | @tsv' \
           | sed -e "s@^@$path\t@"
+          ;;
+        '' )
+          # The path may not exist, or we may not have permission to see it.
+          echo "Warning: could not determine object type for '$path'"
+          ;;
+        * )
+          echo "Unknown object type '$type'. Please create an issue for this in Github."
           ;;
       esac
     done <<<"$pathlist" \
@@ -1155,6 +1217,13 @@ case $command in
           exit 1
         fi
         ;;
+      '' )
+        # The path may not exist, or we may not have permission to see it.
+        echo "Warning: could not determine object type for '$path'"
+        ;;
+      * )
+        echo "Unknown object type '$type'. Please create an issue for this in Github."
+        ;;
     esac
     ;;
   checksum )
@@ -1170,8 +1239,11 @@ case $command in
           get_checksums "$path"
           echo
           ;;
-        '' | LINK )
-          # No valid object. Do nothing.
+        '')
+          echo "Warning: could not determine type of object '$path'."
+          ;;
+        LINK )
+          # Do nothing
           ;;
         * )
           echo "Unknown object type '$type'. Please create an issue for this in Github."
@@ -1194,7 +1266,7 @@ case $command in
           set_qos "$path" "$target"
           ;;
         '' )
-          # No valid object. Do nothing.
+          echo "Warning: could not determine object type of '$path'."
           ;;
         * )
           echo "Unknown object type '$type'. Please create an issue for this in Github."
