@@ -364,7 +364,10 @@ check_macaroon () {
       | sed -n 's/cid before:// p'
     )
     if [ -n "$endtime" ] ; then
-      endtime_unix=$(date --date "$endtime" +%s)
+      case $OSTYPE in
+        darwin* )  endtime_unix=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${endtime:0:19}" +"%s")  ;;
+        * )        endtime_unix=$(date --date "$endtime" +%s)  ;;
+      esac
       now_unix=$(date +%s)
       if [ $now_unix -gt $endtime_unix ] ; then
         echo "ERROR: Macaroon is invalid: it expired on $endtime."
