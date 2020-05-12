@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # This script talks to the dCache API.
 #
@@ -1283,6 +1283,20 @@ case $command in
     | column -t -s $'\t'  
     ;;
   events | report-staged )
+    if [ ${BASH_VERSINFO[0]} -lt 4 ] ; then
+      echo "ERROR: your bash version is too old: $BASH_VERSION." \
+           "You need version 4 or newer to use this Ada option."
+      case $OSTYPE in
+        darwin* )
+          echo "Please install a newer bash with:"
+          echo "    brew install bash"
+          ;;
+        * )
+          echo "Please use a system with a newer bash version."
+          ;;
+      esac
+      exit 1
+    fi
     channel=$(get_channel_by_name "$channelname")
     if [ "$channel" = "" ] ; then
       # Channel doesn't exist; create it.
