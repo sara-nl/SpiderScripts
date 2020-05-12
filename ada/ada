@@ -978,7 +978,7 @@ follow_channel () {
                   ;;
                 report-staged )
                   # User wants to see only the staged files.
-                  if [ $(pathtype "${path}/${object_name}") = "REGULAR" ] ; then
+                  if [ "$(pathtype "${path}/${object_name}")" = "REGULAR" ] ; then
                     # Is it an attribute event?
                     if grep --silent IN_ATTRIB <<<"$mask" ; then
                       # Show file properties (locality, QoS, name)
