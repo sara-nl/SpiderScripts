@@ -569,7 +569,7 @@ pathtype () {
   # <empty> = something went wrong... no permission?
   local path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
-       "${curl_options_common[@]}" \
+       "${curl_options_no_errors[@]}" \
        -X GET "$api/namespace/$path" \
   | jq -r .fileType
 }
@@ -978,24 +978,32 @@ follow_channel () {
                   ;;
                 report-staged )
                   # User wants to see only the staged files.
-                  if [ "$(pathtype "${path}/${object_name}")" = "REGULAR" ] ; then
-                    # Is it an attribute event?
-                    if grep --silent IN_ATTRIB <<<"$mask" ; then
-                      # Show file properties (locality, QoS, name)
-                      encoded_path=$(urlencode "${path}/${object_name}")
-                      (
-                        $debug && set -x   # If --debug is specified, show (only) curl command
-                        curl "${curl_authorization[@]}" \
-                             "${curl_options_common[@]}" \
-                             -X GET "$api/namespace/$encoded_path?locality=true&qos=true"
-                      ) \
-                      | jq -r '[ .fileLocality ,
-                                 if .targetQos then (.currentQos + "→" + .targetQos) else .currentQos end ,
-                                 "'"${path}/${object_name}"'" ]
-                               | @tsv' \
-                      | sed -e 's/\t/  /g'
-                    fi
-                  fi
+                  path_type=$(pathtype "${path}/${object_name}")
+                  case $path_type in
+                    REGULAR )
+                      # Is it an attribute event?
+                      if grep --silent IN_ATTRIB <<<"$mask" ; then
+                        # Show file properties (locality, QoS, name)
+                        encoded_path=$(urlencode "${path}/${object_name}")
+                        (
+                          $debug && set -x   # If --debug is specified, show (only) curl command
+                          curl "${curl_authorization[@]}" \
+                               "${curl_options_common[@]}" \
+                               -X GET "$api/namespace/$encoded_path?locality=true&qos=true"
+                        ) \
+                        | jq -r '[ .fileLocality ,
+                                   if .targetQos then (.currentQos + "→" + .targetQos) else .currentQos end ,
+                                   "'"${path}/${object_name}"'" ]
+                                 | @tsv' \
+                        | sed -e 's/\t/  /g'
+                      fi
+                      ;;
+                    '' )
+                      # File may have been deleted or moved
+                      echo "WARNING: could not get object type of ${path}/${object_name}." \
+                           "It may have been deleted or moved."
+                      ;;
+                  esac
                   ;;
               esac
               #
