@@ -982,7 +982,7 @@ follow_channel () {
                   case $path_type in
                     REGULAR )
                       # Is it an attribute event?
-                      if grep --silent IN_ATTRIB <<<"$mask" ; then
+                      if grep --silent -e IN_ATTRIB -e IN_MOVED_TO <<<"$mask" ; then
                         # Show file properties (locality, QoS, name)
                         encoded_path=$(urlencode "${path}/${object_name}")
                         (
