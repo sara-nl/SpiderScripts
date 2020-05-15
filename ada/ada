@@ -487,6 +487,16 @@ fi
 
 
 #
+# Set up dir for settings, channel state info, and curl authentication headers
+#
+ada_dir=~/.ada
+mkdir -p "$ada_dir"/headers
+mkdir -p "$ada_dir"/channels
+chmod -R u=rwX,g=,o= "$ada_dir"
+
+
+
+#
 # Construction of curl command arguments.
 # These are put in arrays for easier handling of quotes.
 #
@@ -497,12 +507,9 @@ case $auth_method in
     # We can't specify the token as a command line argument,
     # because others could read that with the ps command.
     # So we have to put the authorization header in a temporary file.
-    mkdir -p ~/.ada/headers
-    chmod 700 ~/.ada
-    chmod 700 ~/.ada/headers
     case $OSTYPE in
-      darwin* )  curl_authorization_header_file=$(mktemp ~/.ada/headers/authorization_header_XXXXXXXXXXXX)     ;;
-      * )        curl_authorization_header_file=$(mktemp -p ~/.ada/headers authorization_header_XXXXXXXXXXXX)  ;;
+      darwin* )  curl_authorization_header_file=$(mktemp "$ada_dir"/headers/authorization_header_XXXXXXXXXXXX)     ;;
+      * )        curl_authorization_header_file=$(mktemp -p "$ada_dir"/headers authorization_header_XXXXXXXXXXXX)  ;;
     esac
     chmod 600 "$curl_authorization_header_file"
     # File should be cleaned up when we're done,
@@ -893,11 +900,8 @@ follow_channel () {
   # are being brought online.
   local channel="$1"
   declare -A subscriptions
-  mkdir -p ~/.ada/channels
-  chmod 700 ~/.ada
-  chmod 700 ~/.ada/channels
   channel_id=$(basename "$channel")
-  channel_status_file=~/.ada/channels/"channel-status-$channel_id"
+  channel_status_file="$ada_dir"/channels/"channel-status-$channel_id"
   # If a file exists with the last event for this channel,
   # We should resume from that event ID.
   if [ -f "$channel_status_file" ] ; then
@@ -1319,7 +1323,7 @@ case $command in
       # There is no API call to translate channel ID back to
       # channel name. So we keep track of the name ourselves.
       channel_id=$(basename "$channel")
-      echo "$channelname" > ~/.ada/channels/"channel-name-$channel_id"
+      echo "$channelname" > "$ada_dir"/channels/"channel-name-$channel_id"
       # Set channel timeout
       (
        	$debug && set -x
@@ -1359,8 +1363,8 @@ case $command in
       # Show channel name, if that was saved locally
       # (There is no API call to retrieve the channel name)
       channel_id=$(basename "$channel")
-      if [ -f ~/.ada/channels/"channel-name-$channel_id" ] ; then
-        channelname=$(< ~/.ada/channels/"channel-name-$channel_id")
+      if [ -f "$ada_dir"/channels/"channel-name-$channel_id" ] ; then
+        channelname=$(< "$ada_dir"/channels/"channel-name-$channel_id")
         echo -n "  name=$channelname"
       fi
       # Show channel properties (for now only the timeout)
@@ -1372,7 +1376,7 @@ case $command in
          | tr '\t' '='
       )
       # Show event ID, if available
-      channel_status_file=~/.ada/channels/"channel-status-$channel_id"
+      channel_status_file="$ada_dir"/channels/"channel-status-$channel_id"
       if [ -f "$channel_status_file" ] ; then
         last_event_id=$(grep -E --max-count=1 --only-matching \
                              '[0-9]+' "$channel_status_file")
