@@ -17,6 +17,7 @@
 # 2020-04-03 - Onno    - Add --stat to get all possible file/dir info
 # 2020-04-16 - Onno    - Add --recursive to --stage, --unstage, --checksum
 # 2020-04-21 - Onno    - Improved error handling
+# 2020-05-28 - Onno    - Allow curl options to be overridden in config files
 
 usage() {
   cat <<-EOF
@@ -146,6 +147,28 @@ api=
 debug=false
 channel_timeout=3600
 auth_method=
+
+
+# Default options to curl for various activities;
+# these can be overidden in configuration files, see below.
+# Don't override them unless you know what you're doing.
+curl_options_common=(
+                      -H "accept: application/json"
+                      --fail --silent --show-error
+                    )
+curl_options_no_errors=(
+                      -H "accept: application/json"
+                      --fail --silent
+                    )
+curl_options_post=(
+                    -H "content-type: application/json"
+                  )
+curl_options_stream=(
+                      -H 'accept: text/event-stream'
+                      --no-buffer
+                      --fail --silent --show-error
+                    )
+
 
 # Load defaults from configuration file if exists
 declare -a configfiles=( /etc/ada.conf ~/.ada/ada.conf )
@@ -497,11 +520,8 @@ chmod -R u=rwX,g=,o= "$ada_dir"
 
 
 #
-# Construction of curl command arguments.
-# These are put in arrays for easier handling of quotes.
-#
-
 # Construct the authorization part of the curl command.
+#
 case $auth_method in
   token )
     # We can't specify the token as a command line argument,
@@ -539,23 +559,7 @@ case $auth_method in
     ;;
 esac
 
-# Other curl arguments
-curl_options_common=(
-                      -H "accept: application/json"
-                      --fail --silent --show-error
-                    )
-curl_options_no_errors=(
-                      -H "accept: application/json"
-                      --fail --silent
-                    )
-curl_options_post=(
-                    -H "content-type: application/json"
-                  )
-curl_options_stream=(
-                      -H 'accept: text/event-stream'
-                      --no-buffer
-                      --fail --silent --show-error
-                    )
+
 
 #
 # Define functions we need.
