@@ -172,7 +172,7 @@ curl_options_stream=(
 
 # Load defaults from configuration file if exists
 declare -a configfiles=( /etc/ada.conf ~/.ada/ada.conf )
-for configfile in ${configfiles[@]} ; do
+for configfile in "${configfiles[@]}" ; do
   if [ -f "$configfile" ] ; then
     $debug && echo "Loading $configfile"
     source "$configfile"
@@ -237,16 +237,16 @@ while [ $# -gt 0 ] ; do
       shift ; shift
       ;;
     --whoami )
-      command=whoami
+      command='whoami'
       shift
       ;;
     --list )
-      command=list
+      command='list'
       path="$2"
       shift ; shift
       ;;
     --longlist )
-      command=longlist
+      command='longlist'
       if [ "$2" = "--from-file" ] ; then
         $debug && echo "Reading list '$3'"
         pathlist=$(<"$3")
@@ -257,28 +257,28 @@ while [ $# -gt 0 ] ; do
       fi
       ;;
     --stat )
-      command=stat
+      command='stat'
       path="$2"
       shift ; shift
       ;;
     --mkdir )
-      command=mkdir
+      command='mkdir'
       path="$2"
       shift ; shift
       ;;
     --mv )
-      command=mv
+      command='mv'
       path="$2"
       destination="$3"
       shift ; shift ; shift
       ;;
     --delete )
-      command=delete
+      command='delete'
       path="$2"
       shift ; shift
       ;;
     --checksum )
-      command=checksum
+      command='checksum'
       if [ "$2" = "--from-file" ] ; then
        	pathlist=$(<"$3")
         shift ; shift ; shift
@@ -288,7 +288,7 @@ while [ $# -gt 0 ] ; do
       fi
       ;;
     --stage )
-      command=stage
+      command='stage'
       if [[ $2 =~ ^--from-?file ]] ; then
         pathlist=$(<"$3")
        	shift ;	shift ;	shift
@@ -298,7 +298,7 @@ while [ $# -gt 0 ] ; do
       fi
       ;;
     --unstage )
-      command=unstage
+      command='unstage'
       if [[ $2 =~ ^--from-?file ]] ; then
         pathlist=$(<"$3")
         shift ; shift ; shift
@@ -308,13 +308,13 @@ while [ $# -gt 0 ] ; do
       fi
       ;;
     --events )
-      command=events
+      command='events'
       channelname="$2"
       path="$3"
       shift ; shift ; shift
       ;;
     --report-staged )
-      command=report-staged
+      command='report-staged'
       channelname="$2"
       path="$3"
       shift ; shift ; shift
@@ -332,7 +332,7 @@ while [ $# -gt 0 ] ; do
       shift ; shift
       ;;
     --channels )
-      command=channels
+      command='channels'
       case $2 in
         --* | '' )
           # Next argument is another option or absent; not a channel name
@@ -392,7 +392,7 @@ check_macaroon () {
         * )        endtime_unix=$(date --date "$endtime" +%s)  ;;
       esac
       now_unix=$(date +%s)
-      if [ $now_unix -gt $endtime_unix ] ; then
+      if [ "$now_unix" -gt "$endtime_unix" ] ; then
         echo "ERROR: Macaroon is invalid: it expired on $endtime."
         return 1
       else
@@ -416,7 +416,7 @@ case $auth_method in
     fi
 
     token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
-    if [ $(wc -l <<<"$token") -gt 1 ] ; then
+    if [ "$(wc -l <<<"$token")" -gt 1 ] ; then
       echo "ERROR: file '$tokenfile' contains multiple tokens."
       exit 1
     fi
@@ -499,7 +499,9 @@ case $command in
 esac
 
 if [ -z "$api" ] ; then
-  echo "ERROR: no API specified. Use --api <api> or specify a default API in one of the configuration files (${configfiles[@]})."
+  echo "ERROR: no API specified. Use --api <api> or specify a default API in one of the configuration files (" \
+       "${configfiles[@]}" \
+       ")."
   exit 1
 fi
 
@@ -567,8 +569,8 @@ esac
 
 urlencode () {
   # We use jq for encoding the URL, because we need jq anyway.
-  $debug && echo "urlencoding '$1' to '$(printf "$1" | jq -sRr @uri)'" 1>&2
-  printf "$1" | jq -sRr @uri
+  $debug && echo "urlencoding '$1' to '$(printf '%s' "$1" | jq -sRr @uri)'" 1>&2
+  printf '%s' "$1" | jq -sRr @uri
 }
 
 
@@ -578,7 +580,8 @@ pathtype () {
   # REGULAR = file
   # LINK    = symbolic link
   # <empty> = something went wrong... no permission?
-  local path=$(urlencode "$1")
+  local path
+  path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
        "${curl_options_no_errors[@]}" \
        -X GET "$api/namespace/$path" \
@@ -587,7 +590,8 @@ pathtype () {
 
 
 get_pnfsid () {
-  local path=$(urlencode "$1")
+  local path
+  path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
        "${curl_options_no_errors[@]}" \
        -X GET "$api/namespace/$path" \
@@ -598,7 +602,8 @@ get_pnfsid () {
 is_online () {
   # Checks whether a file is online.
   # The locality should be ONLINE or ONLINE_AND_NEARLINE.
-  local path=$(urlencode "$1")
+  local path
+  path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
        "${curl_options_no_errors[@]}" \
        -X GET "$api/namespace/$path?locality=true&qos=true" \
@@ -608,7 +613,8 @@ is_online () {
 
 
 get_subdirs () {
-  local path=$(urlencode "$1")
+  local path
+  path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
        "${curl_options_common[@]}" \
        -X GET "$api/namespace/$path?children=true" \
@@ -617,7 +623,8 @@ get_subdirs () {
 
 
 get_files_in_dir () {
-  local path=$(urlencode "$1")
+  local path
+  path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
        "${curl_options_common[@]}" \
        -X GET "$api/namespace/$path?children=true" \
@@ -626,7 +633,8 @@ get_files_in_dir () {
 
 
 get_children () {
-  local path=$(urlencode "$1")
+  local path
+  path=$(urlencode "$1")
   curl "${curl_authorization[@]}" \
        "${curl_options_common[@]}" \
        -X GET "$api/namespace/$path?children=true" \
@@ -644,7 +652,7 @@ get_confirmation () {
   prompt="$1"
   while true ; do
     # We read the answer from tty, otherwise strange things would happen.
-    read -p "$prompt (N/y) " -n1 answer < /dev/tty
+    read -r -p "$prompt (N/y) " -n1 answer < /dev/tty
     echo
     case $answer in
       Y | y )       return 0  ;;
@@ -676,7 +684,7 @@ delete_path () {
   # Are there children in this path we need to delete too?
   if $recursive && [ "$path_type" = "DIR" ] ; then
     if $force || get_confirmation "Delete all items in $path?" ; then
-      while read child ; do
+      while read -r child ; do
         delete_path "$path/$child" "$recursive" "$force" \
         || aborted=true
       done < <(get_children "$path")
@@ -746,13 +754,13 @@ with_files_in_dir_do () {
   shift ; shift ; shift
   # Run the given command on all files in this directory
   get_files_in_dir "$path" \
-  | while read filename ; do
+  | while read -r filename ; do
     "$function" "$path/$filename" "$@"
   done
   # If needed, do the same in subdirs
   if $recursive ; then
     get_subdirs "$path" \
-    | while read subdir ; do
+    | while read -r subdir ; do
       with_files_in_dir_do "$function" "$path/$subdir" "$recursive" "$@"
     done
   fi
@@ -768,29 +776,20 @@ get_checksums () {
   encoded_path=$(urlencode "$path")
   {
     echo -n -e "$path\t"
-    (
-      $debug && set -x   # If --debug is specified, show (only) curl command
+    pnfsid=$(get_pnfsid "$path")
+    if [ -z "$pnfsid" ] ; then
+      echo "Could not get pnfsid."
+      return
+    fi
+    {
       curl "${curl_authorization[@]}" \
-           "${curl_options_common[@]}" \
-           -X GET "$api/namespace/$encoded_path"
-    ) \
-    | jq -r '.pnfsId' \
-    | {
-        read pnfsid
-        if [ -z "$pnfsid" ] ; then
-          continue  # skip to next $path
-        fi
-        (
-          $debug && set -x
-          curl "${curl_authorization[@]}" \
-               "${curl_options_common[@]}" \
-               -X GET "$api/id/$pnfsid"
-        ) \
-        | jq -r '.checksums | .[] | [ .type , .value ] | @tsv'
-        # jq output is tab separated:
-        # ADLER32\txxx
-        # MD5_TYPE\txxxxx
-      } \
+           "${curl_options_no_errors[@]}" \
+           -X GET "$api/id/$pnfsid" \
+      | jq -r '.checksums | .[] | [ .type , .value ] | @tsv'
+      # jq output is tab separated:
+      # ADLER32\txxx
+      # MD5_TYPE\txxxxx
+    } \
     | sed -e 's/\t/=/g' | tr '\n' '\t'
     echo
   } \
@@ -851,7 +850,7 @@ channel_subscribe () {
   )
   if $recursive ; then
     get_subdirs "$path" \
-    | while read subdir ; do
+    | while read -r subdir ; do
       $debug && echo "Subscribing to: $path/$subdir"
       channel_subscribe "$channel" "$path/$subdir" "$recursive"
     done
@@ -905,7 +904,7 @@ follow_channel () {
   local channel="$1"
   declare -A subscriptions
   channel_id=$(basename "$channel")
-  channel_status_file="$ada_dir"/channels/"channel-status-$channel_id"
+  channel_status_file="${ada_dir}/channels/channel-status-${channel_id}"
   # If a file exists with the last event for this channel,
   # We should resume from that event ID.
   if [ -f "$channel_status_file" ] ; then
@@ -925,7 +924,7 @@ follow_channel () {
          -X GET "$channel" \
          "${last_event_id_header[@]}"
   ) \
-  | while IFS=': ' read key value ; do
+  | while IFS=': ' read -r key value ; do
       case $key in
         event )
           case $value in
@@ -1072,7 +1071,7 @@ list_online_files () {
   # If recursion is requested, do the same in subdirs.
   if $recursive ; then
     get_subdirs "$path" \
-    | while read subdir ; do
+    | while read -r subdir ; do
       list_online_files "$path/$subdir" "$recursive"
     done
   fi
@@ -1128,7 +1127,7 @@ case $command in
     esac
     ;;
   longlist )
-    while read path ; do
+    while read -r path ; do
       type=$(pathtype "$path")
       encoded_path=$(urlencode "$path")
       case $type in
@@ -1194,7 +1193,7 @@ case $command in
     | jq .
     ;;
   mkdir )
-    parent=$(urlencode $(dirname "$path"))
+    parent=$(urlencode "$(dirname "$path")")
     name=$(basename "$path")
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
@@ -1250,7 +1249,7 @@ case $command in
     esac
     ;;
   checksum )
-    while read path ; do
+    while read -r path ; do
       type=$(pathtype "$path")
       case $type in
         DIR )
@@ -1279,7 +1278,7 @@ case $command in
       stage   )  target='disk+tape'  ;;
       unstage )  target='tape'       ;;
     esac
-    while read path ; do
+    while read -r path ; do
       type=$(pathtype "$path")
       case $type in
         DIR )
@@ -1299,7 +1298,7 @@ case $command in
     | column -t -s $'\t'  
     ;;
   events | report-staged )
-    if [ ${BASH_VERSINFO[0]} -lt 4 ] ; then
+    if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
       echo "ERROR: your bash version is too old: $BASH_VERSION." \
            "You need version 4 or newer to use this Ada option."
       case $OSTYPE in
@@ -1327,7 +1326,7 @@ case $command in
       # There is no API call to translate channel ID back to
       # channel name. So we keep track of the name ourselves.
       channel_id=$(basename "$channel")
-      echo "$channelname" > "$ada_dir"/channels/"channel-name-$channel_id"
+      echo "$channelname" > "${ada_dir}/channels/channel-name-${channel_id}"
       # Set channel timeout
       (
        	$debug && set -x
@@ -1358,17 +1357,17 @@ case $command in
   channels )
     first=true
     get_channels "$channelname" \
-    | while read channel ; do
+    | while read -r channel ; do
       # Show empty line between channels
       ! $first && echo
       first=false
       # Show channel ID
-      echo -n $(basename "$channel")
+      echo -n "$(basename "$channel")"
       # Show channel name, if that was saved locally
       # (There is no API call to retrieve the channel name)
       channel_id=$(basename "$channel")
-      if [ -f "$ada_dir"/channels/"channel-name-$channel_id" ] ; then
-        channelname=$(< "$ada_dir"/channels/"channel-name-$channel_id")
+      if [ -f "${ada_dir}/channels/channel-name-${channel_id}" ] ; then
+        channelname=$(< "${ada_dir}/channels/channel-name-${channel_id}")
         echo -n "  name=$channelname"
       fi
       # Show channel properties (for now only the timeout)
@@ -1380,7 +1379,7 @@ case $command in
          | tr '\t' '='
       )
       # Show event ID, if available
-      channel_status_file="$ada_dir"/channels/"channel-status-$channel_id"
+      channel_status_file="${ada_dir}/channels/channel-status-${channel_id}"
       if [ -f "$channel_status_file" ] ; then
         last_event_id=$(grep -E --max-count=1 --only-matching \
                              '[0-9]+' "$channel_status_file")
@@ -1391,9 +1390,9 @@ case $command in
       echo "  $channel_properties"
       # Next, show all subscribed paths in this channel.
       get_subscriptions_by_channel "$channel" \
-      | while read subscription ; do
+      | while read -r subscription ; do
         {
-          echo -n $(basename "$subscription") " "
+          echo -n "$(basename "$subscription")  "
           list_subscription "$subscription"
         }
       done \
