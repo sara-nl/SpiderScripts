@@ -147,6 +147,7 @@ api=
 debug=false
 channel_timeout=3600
 auth_method=
+certdir=${X509_CERT_DIR:-/etc/grid-security/certificates}
 
 
 # Default options to curl for various activities;
@@ -442,8 +443,8 @@ case $auth_method in
       echo "ERROR: could not open proxy '$proxyfile'."
       exit 1
     fi
-    if [ ! -d /etc/grid-security/certificates ] ; then
-      echo "ERROR: could not find /etc/grid-security/certificates/." \
+    if [ ! -d "$certdir" ] ; then
+      echo "ERROR: could not find '$certdir'." \
            "Please install the Grid root certificates if you want to use your proxy."
       exit 1
     fi
@@ -555,7 +556,7 @@ case $auth_method in
     curl_authorization=( "--netrc-file" "$netrcfile" )
     ;;
   proxy )
-    curl_authorization=( --capath /etc/grid-security/certificates 
+    curl_authorization=( --capath "$certdir"
                          --cert   "$proxyfile"
                          --cacert "$proxyfile" )
     ;;
