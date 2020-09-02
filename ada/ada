@@ -130,6 +130,12 @@ usage() {
 	      List your existing channels and their properties.
 	      If the channel name is given, list channel(s) with that name.
 
+	  --space [poolgroup]
+	      Shows total, free, precious and removable space in a poolgroup.
+	      If no poolgroup is specified, lists all poolgroups.
+	      Available space = free + removable. This command will show that:
+	      "ada ... --space mypoolgroup | jq '.free + .removable'"
+
 	Examples:
 	  $0 ... (todo)
 
@@ -346,6 +352,20 @@ while [ $# -gt 0 ] ; do
       esac
       shift
       ;;
+    --space )
+      command='space'
+      case $2 in
+        --* | '' )
+          # Next argument is another option or absent; not a poolgroup name
+          ;;
+        * )
+          # This must be a poolgroup
+          poolgroup="$2"
+          shift
+          ;;
+      esac
+      shift
+      ;;
     --debug )
       debug=true
       shift
@@ -491,7 +511,7 @@ case $command in
     echo "ERROR. Please specify a command. See --help for more information."
     exit 1
     ;;
-  whoami | channels )
+  whoami | channels | space )
     ;;
   * )
     echo "ERROR: command '$command' is not implemented."
@@ -1400,6 +1420,25 @@ case $command in
       | sort -k 2,2 \
       | sed -e 's/^/  /'
     done
+    ;;
+  space )
+    if [ -z "$poolgroup" ] ; then
+      (
+        $debug && set -x
+        curl "${curl_authorization[@]}" \
+             "${curl_options_common[@]}" \
+             -X GET "$api/poolgroups" \
+        | jq -r '.[] | .name'
+      )
+    else
+      (
+        $debug && set -x
+        curl "${curl_authorization[@]}" \
+             "${curl_options_common[@]}" \
+             -X GET "$api/poolgroups/$poolgroup/space" \
+        | jq '.groupSpaceData'
+      )
+    fi
     ;;
   * )
     echo "Command '$command' is not implemented (yet)."
