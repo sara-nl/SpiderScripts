@@ -18,6 +18,8 @@
 # 2020-04-16 - Onno    - Add --recursive to --stage, --unstage, --checksum
 # 2020-04-21 - Onno    - Improved error handling
 # 2020-05-28 - Onno    - Allow curl options to be overridden in config files
+# 2020-08-23 - ahaupt  - Use env vars X509_USER_PROXY and X509_CERT_DIR if set
+# 2020-09-02 - Onno    - Added --space to get poolgroup capacity
 
 usage() {
   cat <<-EOF
