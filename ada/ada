@@ -135,6 +135,8 @@ usage() {
 	      If no poolgroup is specified, lists all poolgroups.
 	      Available space = free + removable. This command will show that:
 	      "ada ... --space mypoolgroup | jq '.free + .removable'"
+	      The pinned (sticky) capacity can be calculated with:
+	      "ada ... | jq '.total - .free - .precious - .removable'"
 
 	Examples:
 	  $0 ... (todo)
