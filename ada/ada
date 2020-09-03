@@ -371,7 +371,7 @@ while [ $# -gt 0 ] ; do
       shift
       ;;
     *)
-      echo "ERROR: unknown option '$1'."
+      echo 1>&2 "ERROR: unknown option '$1'."
       usage
       ;;
   esac
@@ -414,7 +414,7 @@ check_macaroon () {
       esac
       now_unix=$(date +%s)
       if [ "$now_unix" -gt "$endtime_unix" ] ; then
-        echo "ERROR: Macaroon is invalid: it expired on $endtime."
+        echo 1>&2 "ERROR: Macaroon is invalid: it expired on $endtime."
         return 1
       else
         $debug && echo "Macaroon has not expired yet."
@@ -432,13 +432,13 @@ check_macaroon () {
 case $auth_method in
   token )
     if [ -z "$tokenfile" ] ; then
-      echo "ERROR: no tokenfile specified."
+      echo 1>&2 "ERROR: no tokenfile specified."
       exit 1
     fi
 
     token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
     if [ "$(wc -l <<<"$token")" -gt 1 ] ; then
-      echo "ERROR: file '$tokenfile' contains multiple tokens."
+      echo 1>&2 "ERROR: file '$tokenfile' contains multiple tokens."
       exit 1
     fi
     # If it was not an rclone config file, it may be a 
@@ -447,24 +447,24 @@ case $auth_method in
       token=$(head -n 1 "$tokenfile")
     fi
     if [ -z "$token" ] ; then
-      echo "ERROR: could not read token from tokenfile."
+      echo 1>&2 "ERROR: could not read token from tokenfile."
       exit 1
     fi
     check_macaroon "$token" || exit 1
     ;;
   netrc )
     if [ ! -f "$netrcfile" ] ; then
-      echo "ERROR: could not open netrc file '$netrcfile'."
+      echo 1>&2 "ERROR: could not open netrc file '$netrcfile'."
       exit 1
     fi
     ;;
   proxy )
     if [ ! -f "$proxyfile" ] ; then
-      echo "ERROR: could not open proxy '$proxyfile'."
+      echo 1>&2 "ERROR: could not open proxy '$proxyfile'."
       exit 1
     fi
     if [ ! -d "$certdir" ] ; then
-      echo "ERROR: could not find '$certdir'." \
+      echo 1>&2 "ERROR: could not find '$certdir'." \
            "Please install the Grid root certificates if you want to use your proxy."
       exit 1
     fi
@@ -474,7 +474,7 @@ case $auth_method in
     fi
     ;;
   * )
-    echo "ERROR: you have to specify a valid authentication method."
+    echo 1>&2 "ERROR: you have to specify a valid authentication method."
     exit 1
     ;;
 esac
@@ -483,19 +483,19 @@ esac
 case $command in
   list | stat | mkdir | mv | delete | events | report-staged )
     if [[ -z $path || $path =~ ^-- ]] ; then
-      echo "ERROR: command $command requires a path."
+      echo 1>&2 "ERROR: command $command requires a path."
       exit 1
     fi
     case $command in
       mv )
         if [[ -z $destination || $destination =~ ^-- ]] ; then
-          echo "ERROR: command $command requires a destination."
+          echo 1>&2 "ERROR: command $command requires a destination."
           exit 1
         fi
         ;;
       events )
         if [[ -z $channelname || $channelname =~ ^-- ]] ; then
-          echo "ERROR: command $command requires a channel name."
+          echo 1>&2 "ERROR: command $command requires a channel name."
           exit 1
         fi
         ;;
@@ -503,24 +503,24 @@ case $command in
     ;;
   longlist | checksum | stage | unstage )
     if [[ -z $pathlist || $pathlist =~ ^-- ]] ; then
-      echo "ERROR: command $command requires a path or a path list."
+      echo 1>&2 "ERROR: command $command requires a path or a path list."
       exit 1
     fi
     ;;
   '' )
-    echo "ERROR. Please specify a command. See --help for more information."
+    echo 1>&2 "ERROR. Please specify a command. See --help for more information."
     exit 1
     ;;
   whoami | channels | space )
     ;;
   * )
-    echo "ERROR: command '$command' is not implemented."
+    echo 1>&2 "ERROR: command '$command' is not implemented."
     exit 1
     ;;
 esac
 
 if [ -z "$api" ] ; then
-  echo "ERROR: no API specified. Use --api <api> or specify a default API in one of the configuration files (" \
+  echo 1>&2 "ERROR: no API specified. Use --api <api> or specify a default API in one of the configuration files (" \
        "${configfiles[@]}" \
        ")."
   exit 1
@@ -690,7 +690,7 @@ delete_path () {
   case $recursive in
     true | false ) ;;  # No problem
     * )
-      echo "ERROR: delete_path: recursive is '$recursive' but should be true or false."
+      echo 1>&2 "ERROR: delete_path: recursive is '$recursive' but should be true or false."
       exit 1
       ;;
   esac
@@ -768,7 +768,7 @@ with_files_in_dir_do () {
   case $recursive in
     true | false )  ;;  # No problem
     * )
-      echo "Error in with_files_in_dir_do: recursive='$recursive'; should be true or false."
+      echo 1>&2 "Error in with_files_in_dir_do: recursive='$recursive'; should be true or false."
       exit 1
       ;;
   esac
@@ -835,7 +835,7 @@ get_channel_by_name () {
   channel=$(jq -r '.[]' <<<"$channel_json")
   channel_count=$(wc -l <<<"$channel")
   if [ "$channel_count" -gt 1 ] ; then
-    echo "ERROR: there is more than one channel with that name:"
+    echo 1>&2 "ERROR: there is more than one channel with that name:"
     echo "$channel"
     exit 1
   fi
@@ -953,7 +953,7 @@ follow_channel () {
               event_type="$value"
               ;;
             * )
-              echo "ERROR: don't know how to handle event type '$value'."
+              echo 1>&2 "ERROR: don't know how to handle event type '$value'."
               cat  # Read and show everything from stdin
               exit 1
               ;;
@@ -1055,7 +1055,7 @@ follow_channel () {
           event_type=
           ;;
         * )
-          echo "ERROR: don't know how to handle '$key: $value'."
+          echo 1>&2 "ERROR: don't know how to handle '$key: $value'."
           exit 1
           ;;
       esac
@@ -1069,7 +1069,7 @@ list_online_files () {
   case $recursive in
     true | false ) ;;  # No problem
     * )
-      echo "ERROR: list_online_files: recursive is '$recursive' but should be true or false."
+      echo 1>&2 "ERROR: list_online_files: recursive is '$recursive' but should be true or false."
       exit 1
       ;;
   esac
@@ -1202,7 +1202,7 @@ case $command in
   stat )
     pnfsid=$(get_pnfsid "$path")
     if [ -z "$pnfsid" ] ; then
-      echo "ERROR: could not get file properties."
+      echo 1>&2 "ERROR: could not get file properties."
       exit 1
     fi
     (
@@ -1231,7 +1231,7 @@ case $command in
     # If target already exists, quit.
     case $(pathtype "$destination") in
       DIR | REGULAR | LINK )
-        echo "ERROR: target '$destination' already exists."
+        echo 1>&2 "ERROR: target '$destination' already exists."
         exit 1
         ;;
     esac
@@ -1320,15 +1320,15 @@ case $command in
     ;;
   events | report-staged )
     if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
-      echo "ERROR: your bash version is too old: $BASH_VERSION." \
+      echo 1>&2 "ERROR: your bash version is too old: $BASH_VERSION." \
            "You need version 4 or newer to use this Ada option."
       case $OSTYPE in
         darwin* )
-          echo "Please install a newer bash with:"
-          echo "    brew install bash"
+          echo 1>&2 "Please install a newer bash with:"
+          echo 1>&2 "    brew install bash"
           ;;
         * )
-          echo "Please use a system with a newer bash version."
+          echo 1>&2 "Please use a system with a newer bash version."
           ;;
       esac
       exit 1
