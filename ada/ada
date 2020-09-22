@@ -20,6 +20,7 @@
 # 2020-05-28 - Onno    - Allow curl options to be overridden in config files
 # 2020-08-23 - ahaupt  - Use env vars X509_USER_PROXY and X509_CERT_DIR if set
 # 2020-09-02 - Onno    - Added --space to get poolgroup capacity
+# 2020-09-22 - Onno    - Support environment variables (ada_<variable>)
 
 usage() {
   cat <<-EOF
@@ -140,12 +141,41 @@ usage() {
 	      The pinned (sticky) capacity can be calculated with:
 	      "ada ... | jq '.total - .free - .precious - .removable'"
 
+
+	Configuration files:
+	
+	  Default values can be stored in /etc/ada.conf and ~/.ada/ada.conf.
+	  For example:
+	  api='https://prometheus.desy.de:3880/api/v1/'
+	
+	
+	Environment variables:
+	  
+	  Ada will use these environment variables if they exist:
+	    ada_api             => --api
+	    ada_tokenfile       => --tokenfile  
+	    ada_netrcfile       => --netrcfile
+	    ada_debug           => --debug
+	    ada_channel_timeout => --timeout
+	    X509_USER_PROXY
+	    X509_CERT_DIR
+	    
+	  You may need to export them, like:
+	    export ada_debug=true ; ada ...
+	  
+	  Environment variables override values from configuration files, 
+	  but not from the command line.
+	  So the order of precedence is:
+	    1. command line arguments
+	    2. environment variables
+	    3. ~/.ada/ada.conf
+	    4. /etc/ada.conf
+
+
 	Examples:
 	  $0 ... (todo)
 
-	Default values can be stored in /etc/ada.conf and ~/.ada/ada.conf.
-	For example:
-	api='https://prometheus.desy.de:3880/api/v1/'
+
 
 	EOF
   exit 1
@@ -195,7 +225,26 @@ if [ -z "$1" ] ; then
   usage
 fi
 
-# Initialize some vars we don't want to be overridden in config files
+# Process environment vars (they take precedence over config files)
+if [ -n "$ada_api" ] ; then
+  api="$ada_api"
+fi
+if [ -n "$ada_tokenfile" ] ; then
+  tokenfile="$ada_tokenfile"
+  auth_method=token
+fi
+if [ -n "$ada_netrcfile" ] ; then
+  netrcfile="$ada_netrcfile"
+  auth_method=netrc
+fi
+if [ -n "$ada_debug" ] ; then
+  debug="$ada_debug"
+fi
+if [ -n "$ada_channel_timeout" ] ; then
+  channel_timeout="$ada_channel_timeout"
+fi
+
+# Initialize some vars we don't want to be overridden
 script_dir=$(dirname "$0")
 command=
 path=
