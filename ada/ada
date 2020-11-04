@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# This script talks to the dCache API.
+# ADA - Advanced dCache API tool to manage data stored in dCache.
 #
 # Design: Natalie & Onno, SURFsara.
 #
@@ -21,11 +21,14 @@
 # 2020-08-23 - ahaupt  - Use env vars X509_USER_PROXY and X509_CERT_DIR if set
 # 2020-09-02 - Onno    - Added --space to get poolgroup capacity
 # 2020-09-22 - Onno    - Support environment variables (ada_<variable>)
+# 2020-11-04 - Onno    - Added link to Natalie's demo video
 
 usage() {
   cat <<-EOF
-	ADA - Access dCache API to manage your data.
+	ADA - Advanced dCache API tool to manage your data in dCache.
 	Usage: $0 [general options...] [authentication] <command> [command options]
+	
+	Demo video at https://www.youtube.com/watch?v=Bh0kpTcUUcw .
 
 	General options:
 
