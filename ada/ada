@@ -485,6 +485,18 @@ check_macaroon () {
 }
 
 
+# If the API address ends with a /, strip it
+if [[ $api =~ /$ ]] ; then
+  echo 1>&2 "WARNING: stripping trailing slash from API address ($api)."
+  api=${api%/}
+fi
+
+
+if [[ ! $api =~ ^https://.*/api/v[12]$ ]] ; then
+  echo 1>&2 "WARNING: the API address ($api) should start with 'https://' and end with '/api/v1'."
+fi
+
+
 case $auth_method in
   token )
     if [ -z "$tokenfile" ] ; then
