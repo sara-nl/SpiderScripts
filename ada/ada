@@ -97,6 +97,12 @@ usage() {
 
 	  --stage <file>
 	      Stage a file from tape (restore, bring it online).
+	      Please note, that with --stage, files are brought
+	      online indefinitely. There is no pin lifetime.
+	      You will have to release them with --unstage to 
+	      make stage space available again.
+	      A future version of Ada will support staging with
+	      a pin lifetime.
 	  --stage <directory> [--recursive]
 	      Stage files in directory.
 	  --stage --from-file <file-list>
