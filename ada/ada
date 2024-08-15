@@ -160,10 +160,11 @@ usage() {
 	
 	Environment variables:
 	  
-	  Ada will use these environment variables if they exist:
-	    ada_api             => --api
+	  Ada will use these environment variables if they exist (in order of precedence):
+      BEARER_TOKEN
 	    ada_tokenfile       => --tokenfile  
 	    ada_netrcfile       => --netrcfile
+      ada_api             => --api
 	    ada_debug           => --debug
 	    ada_channel_timeout => --timeout
 	    X509_USER_PROXY
@@ -235,22 +236,26 @@ if [ -z "$1" ] ; then
 fi
 
 # Process environment vars (they take precedence over config files)
+if [ -n "$ada_channel_timeout" ] ; then
+  channel_timeout="$ada_channel_timeout"
+fi
+if [ -n "$ada_debug" ] ; then
+  debug="$ada_debug"
+fi
 if [ -n "$ada_api" ] ; then
   api="$ada_api"
-fi
-if [ -n "$ada_tokenfile" ] ; then
-  tokenfile="$ada_tokenfile"
-  auth_method=token
 fi
 if [ -n "$ada_netrcfile" ] ; then
   netrcfile="$ada_netrcfile"
   auth_method=netrc
 fi
-if [ -n "$ada_debug" ] ; then
-  debug="$ada_debug"
+if [ -n "$ada_tokenfile" ] ; then
+  tokenfile="$ada_tokenfile"
+  auth_method=token
 fi
-if [ -n "$ada_channel_timeout" ] ; then
-  channel_timeout="$ada_channel_timeout"
+if [ -n "$BEARER_TOKEN" ] ; then
+  token="$BEARER_TOKEN"
+  auth_method=token
 fi
 
 # Initialize some vars we don't want to be overridden
@@ -505,23 +510,28 @@ fi
 
 case $auth_method in
   token )
-    if [ -z "$tokenfile" ] ; then
-      echo 1>&2 "ERROR: no tokenfile specified."
-      exit 1
-    fi
+    if [ -n "$tokenfile" ] ; then 
+      if ! [ -f "$tokenfile" ] ; then
+        echo 1>&2 "ERROR: specified tokenfile does not exist."
+        exit 1
+      fi
 
-    token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
-    if [ "$(wc -l <<<"$token")" -gt 1 ] ; then
-      echo 1>&2 "ERROR: file '$tokenfile' contains multiple tokens."
-      exit 1
-    fi
-    # If it was not an rclone config file, it may be a 
-    # plain text file with only the token.
-    if [ -z "$token" ] ; then
-      token=$(head -n 1 "$tokenfile")
-    fi
-    if [ -z "$token" ] ; then
-      echo 1>&2 "ERROR: could not read token from tokenfile."
+      token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
+      if [ "$(wc -l <<<"$token")" -gt 1 ] ; then
+        echo 1>&2 "ERROR: file '$tokenfile' contains multiple tokens."
+        exit 1
+      fi
+      # If it was not an rclone config file, it may be a 
+      # plain text file with only the token.
+      if [ -z "$token" ] ; then
+        token=$(head -n 1 "$tokenfile")
+      fi
+      if [ -z "$token" ] ; then
+        echo 1>&2 "ERROR: could not read token from tokenfile."
+        exit 1
+      fi
+    elif ! [ -n "$token" ] ; then
+      echo 1>&2 "ERROR: no tokenfile, nor variable BEARER_TOKEN specified."
       exit 1
     fi
     check_macaroon "$token" || exit 1
