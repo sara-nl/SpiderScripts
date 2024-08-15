@@ -55,6 +55,8 @@ usage() {
 	      Authenticate with a Grid proxy.
 	      If no filename was provided, use \$X509_USER_PROXY.
 
+    If no authentication method is specified, \$BEARER_TOKEN is used if it exists. 
+
 	Commands:
 
 	  --help
@@ -162,13 +164,13 @@ usage() {
 	  
 	  Ada will use these environment variables if they exist (in order of precedence):
       BEARER_TOKEN
-	    ada_tokenfile       => --tokenfile  
-	    ada_netrcfile       => --netrcfile
+      ada_tokenfile       => --tokenfile  
+      ada_netrcfile       => --netrcfile
       ada_api             => --api
-	    ada_debug           => --debug
-	    ada_channel_timeout => --timeout
-	    X509_USER_PROXY
-	    X509_CERT_DIR
+      ada_debug           => --debug
+      ada_channel_timeout => --timeout
+      X509_USER_PROXY
+      X509_CERT_DIR
 	    
 	  You may need to export them, like:
 	    export ada_debug=true ; ada ...
