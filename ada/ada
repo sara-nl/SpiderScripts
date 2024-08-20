@@ -7,21 +7,22 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
-# 2020-01-28 - Onno    - Created
-# 2020-02-14 - Onno    - Support for server-sent events
-# 2020-02-18 - Onno    - Recursion with server-sent events
-# 2020-02-24 - Onno    - Don't show bearer tokens on command line
-# 2020-03-04 - Onno    - Added X509 proxy authentication and netrc authentication
-# 2020-03-11 - Onno    - Added recursive deletes
-# 2020-03-13 - Onno    - Get server-sent events for files being staged
-# 2020-04-03 - Onno    - Add --stat to get all possible file/dir info
-# 2020-04-16 - Onno    - Add --recursive to --stage, --unstage, --checksum
-# 2020-04-21 - Onno    - Improved error handling
-# 2020-05-28 - Onno    - Allow curl options to be overridden in config files
-# 2020-08-23 - ahaupt  - Use env vars X509_USER_PROXY and X509_CERT_DIR if set
-# 2020-09-02 - Onno    - Added --space to get poolgroup capacity
-# 2020-09-22 - Onno    - Support environment variables (ada_<variable>)
+# 2024-08-24 - Haili   - Added option to use env var BEARER_TOKEN
 # 2020-11-04 - Onno    - Added link to Natalie's demo video
+# 2020-09-22 - Onno    - Support environment variables (ada_<variable>)
+# 2020-09-02 - Onno    - Added --space to get poolgroup capacity
+# 2020-08-23 - ahaupt  - Use env vars X509_USER_PROXY and X509_CERT_DIR if set
+# 2020-05-28 - Onno    - Allow curl options to be overridden in config files
+# 2020-04-21 - Onno    - Improved error handling
+# 2020-04-16 - Onno    - Add --recursive to --stage, --unstage, --checksum
+# 2020-04-03 - Onno    - Add --stat to get all possible file/dir info
+# 2020-03-13 - Onno    - Get server-sent events for files being staged
+# 2020-03-11 - Onno    - Added recursive deletes
+# 2020-03-04 - Onno    - Added X509 proxy authentication and netrc authentication
+# 2020-02-24 - Onno    - Don't show bearer tokens on command line
+# 2020-02-18 - Onno    - Recursion with server-sent events
+# 2020-02-14 - Onno    - Support for server-sent events
+# 2020-01-28 - Onno    - Created
 
 usage() {
   cat <<-EOF
@@ -163,14 +164,14 @@ usage() {
 	Environment variables:
 	  
 	  Ada will use these environment variables if they exist (in order of precedence):
-      BEARER_TOKEN
-      ada_tokenfile       => --tokenfile  
-      ada_netrcfile       => --netrcfile
-      ada_api             => --api
-      ada_debug           => --debug
-      ada_channel_timeout => --timeout
-      X509_USER_PROXY
-      X509_CERT_DIR
+	    BEARER_TOKEN
+	    ada_tokenfile       => --tokenfile  
+	    ada_netrcfile       => --netrcfile
+	    ada_api             => --api
+	    ada_debug           => --debug
+	    ada_channel_timeout => --timeout
+	    X509_USER_PROXY
+	    X509_CERT_DIR
 	    
 	  You may need to export them, like:
 	    export ada_debug=true ; ada ...
