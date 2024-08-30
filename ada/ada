@@ -7,21 +7,22 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
-# 2020-01-28 - Onno    - Created
-# 2020-02-14 - Onno    - Support for server-sent events
-# 2020-02-18 - Onno    - Recursion with server-sent events
-# 2020-02-24 - Onno    - Don't show bearer tokens on command line
-# 2020-03-04 - Onno    - Added X509 proxy authentication and netrc authentication
-# 2020-03-11 - Onno    - Added recursive deletes
-# 2020-03-13 - Onno    - Get server-sent events for files being staged
-# 2020-04-03 - Onno    - Add --stat to get all possible file/dir info
-# 2020-04-16 - Onno    - Add --recursive to --stage, --unstage, --checksum
-# 2020-04-21 - Onno    - Improved error handling
-# 2020-05-28 - Onno    - Allow curl options to be overridden in config files
-# 2020-08-23 - ahaupt  - Use env vars X509_USER_PROXY and X509_CERT_DIR if set
-# 2020-09-02 - Onno    - Added --space to get poolgroup capacity
-# 2020-09-22 - Onno    - Support environment variables (ada_<variable>)
+# 2024-08-24 - Haili   - Added option to use env var BEARER_TOKEN
 # 2020-11-04 - Onno    - Added link to Natalie's demo video
+# 2020-09-22 - Onno    - Support environment variables (ada_<variable>)
+# 2020-09-02 - Onno    - Added --space to get poolgroup capacity
+# 2020-08-23 - ahaupt  - Use env vars X509_USER_PROXY and X509_CERT_DIR if set
+# 2020-05-28 - Onno    - Allow curl options to be overridden in config files
+# 2020-04-21 - Onno    - Improved error handling
+# 2020-04-16 - Onno    - Add --recursive to --stage, --unstage, --checksum
+# 2020-04-03 - Onno    - Add --stat to get all possible file/dir info
+# 2020-03-13 - Onno    - Get server-sent events for files being staged
+# 2020-03-11 - Onno    - Added recursive deletes
+# 2020-03-04 - Onno    - Added X509 proxy authentication and netrc authentication
+# 2020-02-24 - Onno    - Don't show bearer tokens on command line
+# 2020-02-18 - Onno    - Recursion with server-sent events
+# 2020-02-14 - Onno    - Support for server-sent events
+# 2020-01-28 - Onno    - Created
 
 usage() {
   cat <<-EOF
@@ -54,6 +55,8 @@ usage() {
 	  --proxy [filename]
 	      Authenticate with a Grid proxy.
 	      If no filename was provided, use \$X509_USER_PROXY.
+
+    If no authentication method is specified, \$BEARER_TOKEN is used if it exists. 
 
 	Commands:
 
@@ -160,10 +163,11 @@ usage() {
 	
 	Environment variables:
 	  
-	  Ada will use these environment variables if they exist:
-	    ada_api             => --api
+	  Ada will use these environment variables if they exist (in order of precedence):
+	    BEARER_TOKEN
 	    ada_tokenfile       => --tokenfile  
 	    ada_netrcfile       => --netrcfile
+	    ada_api             => --api
 	    ada_debug           => --debug
 	    ada_channel_timeout => --timeout
 	    X509_USER_PROXY
@@ -235,22 +239,26 @@ if [ -z "$1" ] ; then
 fi
 
 # Process environment vars (they take precedence over config files)
+if [ -n "$ada_channel_timeout" ] ; then
+  channel_timeout="$ada_channel_timeout"
+fi
+if [ -n "$ada_debug" ] ; then
+  debug="$ada_debug"
+fi
 if [ -n "$ada_api" ] ; then
   api="$ada_api"
-fi
-if [ -n "$ada_tokenfile" ] ; then
-  tokenfile="$ada_tokenfile"
-  auth_method=token
 fi
 if [ -n "$ada_netrcfile" ] ; then
   netrcfile="$ada_netrcfile"
   auth_method=netrc
 fi
-if [ -n "$ada_debug" ] ; then
-  debug="$ada_debug"
+if [ -n "$ada_tokenfile" ] ; then
+  tokenfile="$ada_tokenfile"
+  auth_method=token
 fi
-if [ -n "$ada_channel_timeout" ] ; then
-  channel_timeout="$ada_channel_timeout"
+if [ -n "$BEARER_TOKEN" ] ; then
+  token="$BEARER_TOKEN"
+  auth_method=token
 fi
 
 # Initialize some vars we don't want to be overridden
@@ -505,23 +513,28 @@ fi
 
 case $auth_method in
   token )
-    if [ -z "$tokenfile" ] ; then
-      echo 1>&2 "ERROR: no tokenfile specified."
-      exit 1
-    fi
+    if [ -n "$tokenfile" ] ; then 
+      if ! [ -f "$tokenfile" ] ; then
+        echo 1>&2 "ERROR: specified tokenfile does not exist."
+        exit 1
+      fi
 
-    token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
-    if [ "$(wc -l <<<"$token")" -gt 1 ] ; then
-      echo 1>&2 "ERROR: file '$tokenfile' contains multiple tokens."
-      exit 1
-    fi
-    # If it was not an rclone config file, it may be a 
-    # plain text file with only the token.
-    if [ -z "$token" ] ; then
-      token=$(head -n 1 "$tokenfile")
-    fi
-    if [ -z "$token" ] ; then
-      echo 1>&2 "ERROR: could not read token from tokenfile."
+      token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
+      if [ "$(wc -l <<<"$token")" -gt 1 ] ; then
+        echo 1>&2 "ERROR: file '$tokenfile' contains multiple tokens."
+        exit 1
+      fi
+      # If it was not an rclone config file, it may be a 
+      # plain text file with only the token.
+      if [ -z "$token" ] ; then
+        token=$(head -n 1 "$tokenfile")
+      fi
+      if [ -z "$token" ] ; then
+        echo 1>&2 "ERROR: could not read token from tokenfile."
+        exit 1
+      fi
+    elif ! [ -n "$token" ] ; then
+      echo 1>&2 "ERROR: no tokenfile, nor variable BEARER_TOKEN specified."
       exit 1
     fi
     check_macaroon "$token" || exit 1
