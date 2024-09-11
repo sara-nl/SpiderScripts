@@ -620,11 +620,13 @@ fi
 
 
 #
-# Set up dir for settings, channel state info, and curl authentication headers
+# Set up dir for settings, channel state info, curl authentication headers, and request logfile
 #
 ada_dir=~/.ada
+requests_log="$ada_dir"/requests.log
 mkdir -p "$ada_dir"/headers
 mkdir -p "$ada_dir"/channels
+touch "$requests_log"
 chmod -R u=rwX,g=,o= "$ada_dir"
 
 
@@ -822,19 +824,22 @@ delete_path () {
 }
 
 
-set_qos () {
+bulk_request() {
   file="$1"
-  target="$2"
+  # target="$2"
   encoded_path=$(urlencode "$file")
   $debug || echo -n "$file  "
   (
-    $debug && set -x   # If --debug is specified, show (only) curl command
+    $debug && set -x   # If --debug is specified, show (only) curl command 
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
          "${curl_options_post[@]}" \
-         -X POST "$api/namespace/$encoded_path" \
-         -d "{\"action\":\"qos\",\"target\":\"$target\"}"
-  ) | jq -r .status
+         -X POST "$api/bulk-requests"\
+         -d "{ \"activity\": \"PIN\", \"arguments\": {\"lifetime\": \"60\", \"lifetimeUnit\":\"MINUTES\"}, \"target\": [\"/${file}\"]}"\
+         --dump-header - 
+  ) | grep -e request-url -e Date >> "${requests_log}"
+  echo "target: $file" >> $requests_log
+  echo " " >> $requests_log
 }
 
 
@@ -1381,19 +1386,21 @@ case $command in
       esac
     done <<<"$pathlist"
     ;;
-  stage | unstage )
+  stage )
     case $command in
-      stage   )  target='disk+tape'  ;;
-      unstage )  target='tape'       ;;
+      # stage   )  target='disk+tape'  ;;
+      # unstage )  target='tape'       ;;
     esac
     while read -r path ; do
       type=$(pathtype "$path")
       case $type in
         DIR )
-          with_files_in_dir_do set_qos "$path" "$recursive" "$target"
+          echo "TODO: IMPLEMENT BULK STAGING OF DIR"
+          # with_files_in_dir_do set_qos "$path" "$recursive" "$target"
           ;;
         REGULAR | LINK )
-          set_qos "$path" "$target"
+          #set_qos "$path" "$target"
+          bulk_request "$path" "$requests_log"
           ;;
         '' )
           echo "Warning: could not determine object type of '$path'."
