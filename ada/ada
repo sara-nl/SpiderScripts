@@ -98,14 +98,12 @@ usage() {
 	  --checksum --from-file <file-list>
 	      Show MD5/Adler32 checksums for files in the list.
 
-	  --stage <file>
+	  --stage <file> [--lifetime <duration>]
 	      Stage a file from tape (restore, bring it online).
-	      Please note, that with --stage, files are brought
-	      online indefinitely. There is no pin lifetime.
-	      You will have to release them with --unstage to 
-	      make stage space available again.
-	      A future version of Ada will support staging with
-	      a pin lifetime.
+	      With --lifetime the pin lifetime duration, in the 
+	      format "X UNIT", where X is an integer, and UNIT 
+	      can be SECONDS, MINUTES, HOURS or DAYS.
+	      If --lifetime is not given, default is 7 DAYS.
 	  --stage <directory> [--recursive]
 	      Stage files in directory.
 	  --stage --from-file <file-list>
@@ -201,7 +199,8 @@ debug=false
 channel_timeout=3600
 auth_method=
 certdir=${X509_CERT_DIR:-/etc/grid-security/certificates}
-
+lifetime=7
+lifetime_unit=DAYS
 
 # Default options to curl for various activities;
 # these can be overidden in configuration files, see below.
@@ -404,6 +403,11 @@ while [ $# -gt 0 ] ; do
       force=true
       shift
       ;;
+    --lifetime )
+      lifetime="$2"
+      lifetime_unit="$3"
+      shift ; shift ; shift
+      ;;        
     --timeout )
       channel_timeout="$2"
       shift ; shift
@@ -452,7 +456,13 @@ done
 #
 # Validate input
 #
-
+case $lifetime_unit in
+  SECONDS | MINUTES | HOURS | DAYS ) ;;  # No problem
+  * )
+    echo 1>&2 "ERROR: lifetime unit is '$lifetime_unit' but should be SECONDS, MINUTES, HOURS, or DAYS."
+    exit 1
+    ;;
+esac
 
 # We need some external commands.
 for external_command in curl jq sed grep column sort tr ; do
@@ -835,7 +845,7 @@ bulk_request() {
          "${curl_options_common[@]}" \
          "${curl_options_post[@]}" \
          -X POST "$api/bulk-requests"\
-         -d "{ \"activity\": \"PIN\", \"arguments\": {\"lifetime\": \"60\", \"lifetimeUnit\":\"MINUTES\"}, \"target\": [\"/${file}\"]}"\
+         -d "{ \"activity\": \"PIN\", \"arguments\": {\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": [\"/${file}\"]}"\
          --dump-header - 
   ) | grep -e request-url -e Date >> "${requests_log}"
   echo "target: $file" >> $requests_log
