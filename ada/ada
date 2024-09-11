@@ -835,20 +835,34 @@ delete_path () {
 
 
 bulk_request() {
-  file="$1"
-  # target="$2"
-  encoded_path=$(urlencode "$file")
-  $debug || echo -n "$file  "
+  local path="$1"
+  type=$(pathtype "$path")
+  case $type in
+    DIR )
+      arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": [\"/${path}\"], \"expand_directories\": \"ALL\"}"
+      ;;
+    REGULAR | LINK )
+      arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": [\"/${path}\"]}"
+      ;;
+    '' )
+      echo "Warning: could not determine object type of '$path'."
+      ;;
+    * )
+      echo "Unknown object type '$type'. Please create an issue for this in Github."
+      ;;
+  esac
+  encoded_path=$(urlencode "$path")
+  $debug || echo -n "$path  "
   (
     $debug && set -x   # If --debug is specified, show (only) curl command 
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
          "${curl_options_post[@]}" \
          -X POST "$api/bulk-requests"\
-         -d "{ \"activity\": \"PIN\", \"arguments\": {\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": [\"/${file}\"]}"\
+         -d "{ \"activity\": \"PIN\", \"arguments\": ${arguments}"\
          --dump-header - 
   ) | grep -e request-url -e Date >> "${requests_log}"
-  echo "target: $file" >> $requests_log
+  echo "target: $path" >> $requests_log
   echo " " >> $requests_log
 }
 
@@ -1397,28 +1411,8 @@ case $command in
     done <<<"$pathlist"
     ;;
   stage )
-    case $command in
-      # stage   )  target='disk+tape'  ;;
-      # unstage )  target='tape'       ;;
-    esac
     while read -r path ; do
-      type=$(pathtype "$path")
-      case $type in
-        DIR )
-          echo "TODO: IMPLEMENT BULK STAGING OF DIR"
-          # with_files_in_dir_do set_qos "$path" "$recursive" "$target"
-          ;;
-        REGULAR | LINK )
-          #set_qos "$path" "$target"
-          bulk_request "$path" "$requests_log"
-          ;;
-        '' )
-          echo "Warning: could not determine object type of '$path'."
-          ;;
-        * )
-          echo "Unknown object type '$type'. Please create an issue for this in Github."
-          ;;
-      esac
+      bulk_request "$path"
     done <<<"$pathlist" \
     | column -t -s $'\t'  
     ;;
