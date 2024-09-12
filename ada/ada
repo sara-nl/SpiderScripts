@@ -7,6 +7,7 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
+# 2024-09-12 - Haili   - Added bulk requests for staging and unstaging
 # 2024-08-24 - Haili   - Added option to use env var BEARER_TOKEN
 # 2020-11-04 - Onno    - Added link to Natalie's demo video
 # 2020-09-22 - Onno    - Support environment variables (ada_<variable>)
@@ -200,7 +201,7 @@ channel_timeout=3600
 auth_method=
 certdir=${X509_CERT_DIR:-/etc/grid-security/certificates}
 lifetime=7
-lifetime_unit=DAYS
+lifetime_unit=D
 from_file=false
 
 # Default options to curl for various activities;
