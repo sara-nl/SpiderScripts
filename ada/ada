@@ -100,10 +100,10 @@ usage() {
 
 	  --stage <file> [--lifetime <duration>]
 	      Stage a file from tape (restore, bring it online).
-	      With --lifetime the pin lifetime duration, in the 
-	      format "X UNIT", where X is an integer, and UNIT 
-	      can be SECONDS, MINUTES, HOURS or DAYS.
-	      If --lifetime is not given, default is 7 DAYS.
+	      With --lifetime the pin lifetime duration, e.g. 7D.
+	      Allowed units are S, M, H or D, standing for seconds, 
+	      minutes, hours, or days. 
+	      If --lifetime is not given, default is 7D.
 	  --stage <directory> [--recursive]
 	      Stage files in directory.
 	  --stage --from-file <file-list> [--recursive]
@@ -409,9 +409,10 @@ while [ $# -gt 0 ] ; do
       shift
       ;;
     --lifetime )
-      lifetime="$2"
-      lifetime_unit="$3"
-      shift ; shift ; shift
+      arg="$2"
+      lifetime=${arg::${#arg} -1}
+      lifetime_unit=${arg: ${#arg}-1}
+      shift ; shift 
       ;;        
     --timeout )
       channel_timeout="$2"
@@ -461,10 +462,27 @@ done
 #
 # Validate input
 #
+
+# Check lifetime
+if ! [[ "$lifetime" =~ ^[0-9]+$ ]] ; then
+   echo 1>&2 "ERROR: lifetime is not given in correct format."
+   exit 1
+fi
 case $lifetime_unit in
-  SECONDS | MINUTES | HOURS | DAYS ) ;;  # No problem
+  S )
+    lifetime_unit=SECONDS
+    ;;
+  M )
+    lifetime_unit=MINUTES  
+    ;;
+  H )
+    lifetime_unit=HOURS
+    ;;
+  D )
+    lifetime_unit=DAYS
+    ;;
   * )
-    echo 1>&2 "ERROR: lifetime unit is '$lifetime_unit' but should be SECONDS, MINUTES, HOURS, or DAYS."
+    echo 1>&2 "ERROR: lifetime unit is '$lifetime_unit' but should be S, M, H, or D."
     exit 1
     ;;
 esac
