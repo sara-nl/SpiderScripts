@@ -841,7 +841,6 @@ delete_path () {
 
 get_locality () {
   local path="$1"
-  # encoded_path=$(urlencode "$path")
   $debug || echo -n "$file  "
   locality="$((\
     $debug && set -x   # If --debug is specified, show (only) curl command
@@ -854,15 +853,15 @@ get_locality () {
   if [ -z "$locality" ] ; then
     return 1
   else
-    echo "exists"
     return 0
   fi
 }
 
 
 bulk_request() {
-  local path="$1"
-  local recursive="$2"
+  local activity="$1"
+  local path="$2"
+  local recursive="$3"
   type=$(pathtype "$path")
   case $type in
     DIR )
@@ -883,14 +882,14 @@ bulk_request() {
       ;;
   esac
   arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": [\"/${path}\"], \"expand_directories\": \"${expand}\"}"
-  $debug || echo -n "$path  "
+  $debug || echo "$path  "
   (
     $debug && set -x   # If --debug is specified, show (only) curl command 
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
          "${curl_options_post[@]}" \
          -X POST "$api/bulk-requests"\
-         -d "{ \"activity\": \"PIN\", \"arguments\": ${arguments}"\
+         -d "{ \"activity\": \"${activity}\", \"arguments\": ${arguments}"\
          --dump-header - 
   ) | grep -e request-url -e Date >> "${requests_log}"
   echo "target: $path" >> $requests_log
@@ -1441,7 +1440,11 @@ case $command in
       esac
     done <<<"$pathlist"
     ;;
-  stage )
+  stage | unstage )
+    case $command in
+      stage   )  activity='PIN'     ;;
+      unstage )  activity='UNPIN'   ;;
+    esac
     if [ "$from_file" == false ] ; then
         get_locality "$pathlist"
         error=$?
@@ -1451,9 +1454,9 @@ case $command in
         fi
     fi
     while read -r path ; do
-      bulk_request "$path" "$recursive"
+      bulk_request "$activity" "$path" "$recursive"
     done <<<"$pathlist" \
-    | column -t -s $'\t'  
+    | column -t -s $'\t'
     ;;
   events | report-staged )
     if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
