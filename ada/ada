@@ -106,8 +106,8 @@ usage() {
 	      If --lifetime is not given, default is 7 DAYS.
 	  --stage <directory> [--recursive]
 	      Stage files in directory.
-	  --stage --from-file <file-list>
-	      Stage files in the list.
+	  --stage --from-file <file-list> [--recursive]
+	      Stage files or directories in the list.
 
 	  --unstage <file>
 	      Release file so dCache may purge its online replica.
@@ -836,13 +836,18 @@ delete_path () {
 
 bulk_request() {
   local path="$1"
+  local recursive="$2"
   type=$(pathtype "$path")
   case $type in
     DIR )
-      arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": [\"/${path}\"], \"expand_directories\": \"ALL\"}"
+      if $recursive ; then
+        expand=ALL
+      else
+        expand=TARGETS
+      fi
       ;;
     REGULAR | LINK )
-      arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": [\"/${path}\"]}"
+      expand=NONE
       ;;
     '' )
       echo "Warning: could not determine object type of '$path'."
@@ -851,6 +856,7 @@ bulk_request() {
       echo "Unknown object type '$type'. Please create an issue for this in Github."
       ;;
   esac
+  arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": [\"/${path}\"], \"expand_directories\": \"${expand}\"}"
   encoded_path=$(urlencode "$path")
   $debug || echo -n "$path  "
   (
@@ -1412,7 +1418,7 @@ case $command in
     ;;
   stage )
     while read -r path ; do
-      bulk_request "$path"
+      bulk_request "$path" "$recursive"
     done <<<"$pathlist" \
     | column -t -s $'\t'  
     ;;
