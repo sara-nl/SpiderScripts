@@ -7,6 +7,7 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
+# 2024-09-12 - Haili   - Added bulk requests for staging and unstaging
 # 2024-08-24 - Haili   - Added option to use env var BEARER_TOKEN
 # 2020-11-04 - Onno    - Added link to Natalie's demo video
 # 2020-09-22 - Onno    - Support environment variables (ada_<variable>)
@@ -98,18 +99,16 @@ usage() {
 	  --checksum --from-file <file-list>
 	      Show MD5/Adler32 checksums for files in the list.
 
-	  --stage <file>
+	  --stage <file> [--lifetime <duration>]
 	      Stage a file from tape (restore, bring it online).
-	      Please note, that with --stage, files are brought
-	      online indefinitely. There is no pin lifetime.
-	      You will have to release them with --unstage to 
-	      make stage space available again.
-	      A future version of Ada will support staging with
-	      a pin lifetime.
+	      With --lifetime the pin lifetime duration, e.g. 7D.
+	      Allowed units are S, M, H or D, standing for seconds, 
+	      minutes, hours, or days. 
+	      If --lifetime is not given, default is 7D.
 	  --stage <directory> [--recursive]
 	      Stage files in directory.
-	  --stage --from-file <file-list>
-	      Stage files in the list.
+	  --stage --from-file <file-list> [--recursive]
+	      Stage files or directories in the list.
 
 	  --unstage <file>
 	      Release file so dCache may purge its online replica.
@@ -201,7 +200,9 @@ debug=false
 channel_timeout=3600
 auth_method=
 certdir=${X509_CERT_DIR:-/etc/grid-security/certificates}
-
+lifetime=7
+lifetime_unit=D
+from_file=false
 
 # Default options to curl for various activities;
 # these can be overidden in configuration files, see below.
@@ -367,9 +368,11 @@ while [ $# -gt 0 ] ; do
     --stage )
       command='stage'
       if [[ $2 =~ ^--from-?file ]] ; then
+        from_file=true
         pathlist=$(<"$3")
        	shift ;	shift ;	shift
       else
+        from_file=false
         pathlist="$2"
         shift ; shift
       fi
@@ -377,9 +380,11 @@ while [ $# -gt 0 ] ; do
     --unstage )
       command='unstage'
       if [[ $2 =~ ^--from-?file ]] ; then
+        from_file=true
         pathlist=$(<"$3")
         shift ; shift ; shift
       else
+        from_file=false
         pathlist="$2"
         shift ; shift
       fi
@@ -404,6 +409,12 @@ while [ $# -gt 0 ] ; do
       force=true
       shift
       ;;
+    --lifetime )
+      arg="$2"
+      lifetime=${arg::${#arg} -1}
+      lifetime_unit=${arg: ${#arg}-1}
+      shift ; shift 
+      ;;        
     --timeout )
       channel_timeout="$2"
       shift ; shift
@@ -453,6 +464,29 @@ done
 # Validate input
 #
 
+# Check lifetime
+if ! [[ "$lifetime" =~ ^[0-9]+$ ]] ; then
+   echo 1>&2 "ERROR: lifetime is not given in correct format."
+   exit 1
+fi
+case $lifetime_unit in
+  S )
+    lifetime_unit=SECONDS
+    ;;
+  M )
+    lifetime_unit=MINUTES  
+    ;;
+  H )
+    lifetime_unit=HOURS
+    ;;
+  D )
+    lifetime_unit=DAYS
+    ;;
+  * )
+    echo 1>&2 "ERROR: lifetime unit is '$lifetime_unit' but should be S, M, H, or D."
+    exit 1
+    ;;
+esac
 
 # We need some external commands.
 for external_command in curl jq sed grep column sort tr ; do
@@ -620,11 +654,13 @@ fi
 
 
 #
-# Set up dir for settings, channel state info, and curl authentication headers
+# Set up dir for settings, channel state info, curl authentication headers, and request logfile
 #
 ada_dir=~/.ada
+requests_log="$ada_dir"/requests.log
 mkdir -p "$ada_dir"/headers
 mkdir -p "$ada_dir"/channels
+touch "$requests_log"
 chmod -R u=rwX,g=,o= "$ada_dir"
 
 
@@ -822,19 +858,61 @@ delete_path () {
 }
 
 
-set_qos () {
-  file="$1"
-  target="$2"
-  encoded_path=$(urlencode "$file")
+get_locality () {
+  local path="$1"
   $debug || echo -n "$file  "
-  (
+  locality="$((\
     $debug && set -x   # If --debug is specified, show (only) curl command
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
          "${curl_options_post[@]}" \
-         -X POST "$api/namespace/$encoded_path" \
-         -d "{\"action\":\"qos\",\"target\":\"$target\"}"
-  ) | jq -r .status
+         -X POST "$api/tape/archiveinfo" \
+         -d "{\"paths\":[\"/${path}\"]}" \
+  ) | jq . | grep locality)"
+  if [ -z "$locality" ] ; then
+    return 1
+  else
+    return 0
+  fi
+}
+
+
+bulk_request() {
+  local activity="$1"
+  local path="$2"
+  local recursive="$3"
+  type=$(pathtype "$path")
+  case $type in
+    DIR )
+      if $recursive ; then
+        expand=ALL
+      else
+        expand=TARGETS
+      fi
+      ;;
+    REGULAR | LINK )
+      expand=NONE
+      ;;
+    '' )
+      echo "Warning: could not determine object type of '$path'."
+      ;;
+    * )
+      echo "Unknown object type '$type'. Please create an issue for this in Github."
+      ;;
+  esac
+  arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": [\"/${path}\"], \"expand_directories\": \"${expand}\"}"
+  $debug || echo "$path  "
+  (
+    $debug && set -x   # If --debug is specified, show (only) curl command 
+    curl "${curl_authorization[@]}" \
+         "${curl_options_common[@]}" \
+         "${curl_options_post[@]}" \
+         -X POST "$api/bulk-requests"\
+         -d "{ \"activity\": \"${activity}\", \"arguments\": ${arguments}"\
+         --dump-header - 
+  ) | grep -e request-url -e Date >> "${requests_log}"
+  echo "target: $path" >> $requests_log
+  echo " " >> $requests_log
 }
 
 
@@ -1383,27 +1461,21 @@ case $command in
     ;;
   stage | unstage )
     case $command in
-      stage   )  target='disk+tape'  ;;
-      unstage )  target='tape'       ;;
+      stage   )  activity='PIN'     ;;
+      unstage )  activity='UNPIN'   ;;
     esac
+    if [ "$from_file" == false ] ; then
+        get_locality "$pathlist"
+        error=$?
+        if [ "$error" == 1 ] ; then
+          echo 1>&2 "Error: '$pathlist' does not exist."
+          exit 1
+        fi
+    fi
     while read -r path ; do
-      type=$(pathtype "$path")
-      case $type in
-        DIR )
-          with_files_in_dir_do set_qos "$path" "$recursive" "$target"
-          ;;
-        REGULAR | LINK )
-          set_qos "$path" "$target"
-          ;;
-        '' )
-          echo "Warning: could not determine object type of '$path'."
-          ;;
-        * )
-          echo "Unknown object type '$type'. Please create an issue for this in Github."
-          ;;
-      esac
+      bulk_request "$activity" "$path" "$recursive"
     done <<<"$pathlist" \
-    | column -t -s $'\t'  
+    | column -t -s $'\t'
     ;;
   events | report-staged )
     if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
