@@ -930,7 +930,7 @@ bulk_request() {
          -X POST "$api/bulk-requests"\
          -d "{ \"activity\": \"${activity}\", \"arguments\": ${arguments}"\
          --dump-header - 
-  ) | grep -e request-url -e Date >> "${requests_log}"
+  ) | grep -e request-url -e Date | tee -a "${requests_log}"
   echo "activity: $activity" >> $requests_log
   echo "target: $target" >> $requests_log
   echo " " >> $requests_log
