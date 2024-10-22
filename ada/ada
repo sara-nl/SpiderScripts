@@ -107,7 +107,7 @@ usage() {
 	      If --lifetime is not given, default is 7D.
 	  --stage <directory> [--recursive]
 	      Stage files in directory.
-	  --stage --from-file <file-list> [--recursive]
+	  --stage --from-file <file-list>
 	      Stage files or directories in the list.
 
 	  --unstage <file>
@@ -881,26 +881,46 @@ bulk_request() {
   local activity="$1"
   local path="$2"
   local recursive="$3"
-  type=$(pathtype "$path")
-  case $type in
-    DIR )
-      if $recursive ; then
-        expand=ALL
-      else
-        expand=TARGETS
-      fi
-      ;;
-    REGULAR | LINK )
-      expand=NONE
-      ;;
-    '' )
-      echo "Warning: could not determine object type of '$path'."
-      ;;
-    * )
-      echo "Unknown object type '$type'. Please create an issue for this in Github."
-      ;;
-  esac
-  arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": [\"/${path}\"], \"expand_directories\": \"${expand}\"}"
+  if [ "$from_file" == false ] ; then
+    get_locality "$pathlist"
+    error=$?
+    if [ "$error" == 1 ] ; then
+      echo 1>&2 "Error: '$pathlist' does not exist."
+      exit 1
+    fi
+    type=$(pathtype "$path")
+    case $type in
+      DIR )
+        if $recursive ; then
+          expand=ALL
+        else
+          expand=TARGETS
+        fi
+        ;;
+      REGULAR | LINK )
+        expand=NONE
+        ;;
+      '' )
+        echo "Warning: could not determine object type of '$path'."
+        ;;
+      * )
+        echo "Unknown object type '$type'. Please create an issue for this in Github."
+        ;;
+    esac
+  else
+    if $recursive ; then
+      echo 1>&2 "Error: recursive (un)staging forbidden when using file-list."
+      exit 1
+    else
+      expand=TARGETS
+    fi
+    target='['
+    while read -r path ; do
+      target=$target\"/${path}\",
+    done <<<"$pathlist"
+    target=${target%?}]
+  fi
+  arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": ${target}, \"expand_directories\": \"${expand}\"}"
   $debug || echo "$path  "
   (
     $debug && set -x   # If --debug is specified, show (only) curl command 
@@ -1464,18 +1484,7 @@ case $command in
       stage   )  activity='PIN'     ;;
       unstage )  activity='UNPIN'   ;;
     esac
-    if [ "$from_file" == false ] ; then
-        get_locality "$pathlist"
-        error=$?
-        if [ "$error" == 1 ] ; then
-          echo 1>&2 "Error: '$pathlist' does not exist."
-          exit 1
-        fi
-    fi
-    while read -r path ; do
-      bulk_request "$activity" "$path" "$recursive"
-    done <<<"$pathlist" \
-    | column -t -s $'\t'
+    bulk_request "$activity" "$pathlist" "$recursive" | column -t -s $'\t'
     ;;
   events | report-staged )
     if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
