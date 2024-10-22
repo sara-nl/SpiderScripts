@@ -931,6 +931,7 @@ bulk_request() {
          -d "{ \"activity\": \"${activity}\", \"arguments\": ${arguments}"\
          --dump-header - 
   ) | grep -e request-url -e Date >> "${requests_log}"
+  echo "activity: $activity" >> $requests_log
   echo "target: $target" >> $requests_log
   echo " " >> $requests_log
 }
