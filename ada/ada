@@ -921,7 +921,7 @@ bulk_request() {
     target=${target%?}]
   fi
   arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": ${target}, \"expand_directories\": \"${expand}\"}"
-  $debug || echo "$path  "
+  $debug || echo "$target  "
   (
     $debug && set -x   # If --debug is specified, show (only) curl command 
     curl "${curl_authorization[@]}" \
@@ -931,7 +931,7 @@ bulk_request() {
          -d "{ \"activity\": \"${activity}\", \"arguments\": ${arguments}"\
          --dump-header - 
   ) | grep -e request-url -e Date >> "${requests_log}"
-  echo "target: $path" >> $requests_log
+  echo "target: $target" >> $requests_log
   echo " " >> $requests_log
 }
 
