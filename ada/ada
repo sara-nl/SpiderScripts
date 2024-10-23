@@ -920,7 +920,13 @@ bulk_request() {
     done <<<"$pathlist"
     target=${target%?}]
   fi
-  arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": ${target}, \"expand_directories\": \"${expand}\"}"
+  case $activity in
+    PIN   )    
+      arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}" ;;
+    UNPIN )    
+      arguments="{}" ;;
+  esac
+  data="{\"activity\": \"${activity}\", \"arguments\": ${arguments}, \"target\": ${target}, \"expand_directories\": \"${expand}\"}"
   $debug || echo "$target  "
   (
     $debug && set -x   # If --debug is specified, show (only) curl command 
@@ -928,10 +934,10 @@ bulk_request() {
          "${curl_options_common[@]}" \
          "${curl_options_post[@]}" \
          -X POST "$api/bulk-requests"\
-         -d "{ \"activity\": \"${activity}\", \"arguments\": ${arguments}"\
+         -d "${data}" \
          --dump-header - 
   ) | grep -e request-url -e Date | tee -a "${requests_log}"
-  $debug && echo "Information about bulk requests is logged in $requests_log."
+  $debug && echo "Information about bulk request is logged in $requests_log."
   echo "activity: $activity" >> $requests_log
   echo "target: $target" >> $requests_log
   echo " " >> $requests_log
