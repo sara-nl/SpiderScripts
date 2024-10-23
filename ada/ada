@@ -879,7 +879,7 @@ get_locality () {
 
 bulk_request() {
   local activity="$1"
-  local path="$2"
+  local pathlist="$2"
   local recursive="$3"
   if [ "$from_file" == false ] ; then
     get_locality "$pathlist"
@@ -888,7 +888,7 @@ bulk_request() {
       echo 1>&2 "Error: '$pathlist' does not exist."
       exit 1
     fi
-    type=$(pathtype "$path")
+    type=$(pathtype "$pathlist")
     case $type in
       DIR )
         if $recursive ; then
@@ -901,7 +901,7 @@ bulk_request() {
         expand=NONE
         ;;
       '' )
-        echo "Warning: could not determine object type of '$path'."
+        echo "Warning: could not determine object type of '$pathlist'."
         ;;
       * )
         echo "Unknown object type '$type'. Please create an issue for this in Github."
@@ -914,11 +914,6 @@ bulk_request() {
     else
       expand=TARGETS
     fi
-    target='['
-    while read -r path ; do
-      target=$target\"/${path}\",
-    done <<<"$pathlist"
-    target=${target%?}]
   fi
   case $activity in
     PIN   )    
@@ -926,6 +921,11 @@ bulk_request() {
     UNPIN )    
       arguments="{}" ;;
   esac
+  target='['
+  while read -r path ; do
+    target=$target\"/${path}\",
+  done <<<"$pathlist"
+  target=${target%?}]
   data="{\"activity\": \"${activity}\", \"arguments\": ${arguments}, \"target\": ${target}, \"expand_directories\": \"${expand}\"}"
   $debug || echo "$target  "
   (
