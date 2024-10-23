@@ -939,7 +939,7 @@ bulk_request() {
   ) | grep -e request-url -e Date | tee -a "${requests_log}"
   $debug && echo "Information about bulk request is logged in $requests_log."
   echo "activity: $activity" >> $requests_log
-  echo "target: $target" >> $requests_log
+  echo "target: $target" | sed 's/,/,\n         /g' >> $requests_log
   echo " " >> $requests_log
 }
 
