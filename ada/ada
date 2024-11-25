@@ -882,13 +882,14 @@ bulk_request() {
   local pathlist="$2"
   local recursive="$3"
   if [ "$from_file" == false ] ; then
-    get_locality "$pathlist"
+    local filepath="$2"
+    get_locality "$filepath"
     error=$?
     if [ "$error" == 1 ] ; then
-      echo 1>&2 "Error: '$pathlist' does not exist."
+      echo 1>&2 "Error: '$filepath' does not exist."
       exit 1
     fi
-    type=$(pathtype "$pathlist")
+    type=$(pathtype "$filepath")
     case $type in
       DIR )
         if $recursive ; then
@@ -901,7 +902,7 @@ bulk_request() {
         expand=NONE
         ;;
       '' )
-        echo "Warning: could not determine object type of '$pathlist'."
+        echo "Warning: could not determine object type of '$filepath'."
         ;;
       * )
         echo "Unknown object type '$type'. Please create an issue for this in Github."
