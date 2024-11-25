@@ -806,6 +806,39 @@ get_confirmation () {
 }
 
 
+create_path () {\
+  local path="$1"
+  local recursive="$2"
+  local parent="$(dirname "$path")"
+  echo "parent" "$parent"
+  get_locality "$parent"
+  error=$?
+  if [ "$error" == 1 ] && $recursive ; then
+    if [ "${#parent}" -gt 1 ]; then
+      echo ${#parent}
+      echo 1>&2 "Warning: parent dir '$parent' does not exist. Will atempt to create it."
+      create_path $parent $recursive
+    else
+      echo 1>&2 "ERROR: Unable to create dirs. Check the specified path."
+      exit 1
+    fi
+  elif [ "$error" == 1 ]; then 
+    echo 1>&2 "ERROR: parent dir '$parent' does not exist. To recursivly create dirs, add --recursive."
+  fi 
+  parent=$(urlencode "$(dirname "$path")")
+  name=$(basename "$path")
+  (
+    $debug && set -x   # If --debug is specified, show (only) curl command
+    curl "${curl_authorization[@]}" \
+          "${curl_options_common[@]}" \
+          "${curl_options_post[@]}" \
+          -X POST "$api/namespace/$parent" \
+          -d "{\"action\":\"mkdir\",\"name\":\"$name\"}"
+  ) \
+  | jq -r .status
+}
+
+
 delete_path () {
   local path="$1"
   local recursive="$2"
@@ -1408,17 +1441,7 @@ case $command in
     | jq .
     ;;
   mkdir )
-    parent=$(urlencode "$(dirname "$path")")
-    name=$(basename "$path")
-    (
-      $debug && set -x   # If --debug is specified, show (only) curl command
-      curl "${curl_authorization[@]}" \
-           "${curl_options_common[@]}" \
-           "${curl_options_post[@]}" \
-           -X POST "$api/namespace/$parent" \
-           -d "{\"action\":\"mkdir\",\"name\":\"$name\"}"
-    ) \
-    | jq -r .status
+    create_path $path $recursive
     ;;
   mv )
     # dCache may overwrite an empty directory.
