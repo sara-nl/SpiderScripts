@@ -1,0 +1,24 @@
+name: Unit Tests
+
+permissions:
+  contents: read
+
+on: [push]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout shell test framework shUnit2
+        uses: actions/checkout@v4
+        with:
+          repository: kward/shunit2
+          path: ${{github.workspace}}/tests/shunit2
+          fetch-depth: 1
+      - name: Run unit tests
+        shell: bash
+        run: |
+          export PATH="tests/shunit2:$PATH"
+          tests/unit_test.sh
+
