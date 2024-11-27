@@ -107,7 +107,7 @@ usage() {
 	      If --lifetime is not given, default is 7D.
 	  --stage <directory> [--recursive]
 	      Stage files in directory.
-	  --stage --from-file <file-list> [--recursive]
+	  --stage --from-file <file-list>
 	      Stage files or directories in the list.
 
 	  --unstage <file>
@@ -879,39 +879,68 @@ get_locality () {
 
 bulk_request() {
   local activity="$1"
-  local path="$2"
+  local pathlist="$2"
   local recursive="$3"
-  type=$(pathtype "$path")
-  case $type in
-    DIR )
-      if $recursive ; then
-        expand=ALL
-      else
-        expand=TARGETS
-      fi
-      ;;
-    REGULAR | LINK )
-      expand=NONE
-      ;;
-    '' )
-      echo "Warning: could not determine object type of '$path'."
-      ;;
-    * )
-      echo "Unknown object type '$type'. Please create an issue for this in Github."
-      ;;
+  if [ "$from_file" == false ] ; then
+    local filepath="$2"
+    get_locality "$filepath"
+    error=$?
+    if [ "$error" == 1 ] ; then
+      echo 1>&2 "Error: '$filepath' does not exist."
+      exit 1
+    fi
+    type=$(pathtype "$filepath")
+    case $type in
+      DIR )
+        if $recursive ; then
+          expand=ALL
+        else
+          expand=TARGETS
+        fi
+        ;;
+      REGULAR | LINK )
+        expand=NONE
+        ;;
+      '' )
+        echo "Warning: could not determine object type of '$filepath'."
+        ;;
+      * )
+        echo "Unknown object type '$type'. Please create an issue for this in Github."
+        ;;
+    esac
+  else
+    if $recursive ; then
+      echo 1>&2 "Error: recursive (un)staging forbidden when using file-list."
+      exit 1
+    else
+      expand=TARGETS
+    fi
+  fi
+  case $activity in
+    PIN   )    
+      arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}" ;;
+    UNPIN )    
+      arguments="{}" ;;
   esac
-  arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}, \"target\": [\"/${path}\"], \"expand_directories\": \"${expand}\"}"
-  $debug || echo "$path  "
+  target='['
+  while read -r path ; do
+    target=$target\"/${path}\",
+  done <<<"$pathlist"
+  target=${target%?}]
+  data="{\"activity\": \"${activity}\", \"arguments\": ${arguments}, \"target\": ${target}, \"expand_directories\": \"${expand}\"}"
+  $debug || echo "$target  "
   (
     $debug && set -x   # If --debug is specified, show (only) curl command 
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
          "${curl_options_post[@]}" \
          -X POST "$api/bulk-requests"\
-         -d "{ \"activity\": \"${activity}\", \"arguments\": ${arguments}"\
+         -d "${data}" \
          --dump-header - 
-  ) | grep -e request-url -e Date >> "${requests_log}"
-  echo "target: $path" >> $requests_log
+  ) | grep -e request-url -e Date | tee -a "${requests_log}"
+  $debug && echo "Information about bulk request is logged in $requests_log."
+  echo "activity: $activity" >> $requests_log
+  echo "target: $target" | sed 's/,/,\n         /g' >> $requests_log
   echo " " >> $requests_log
 }
 
@@ -1464,18 +1493,7 @@ case $command in
       stage   )  activity='PIN'     ;;
       unstage )  activity='UNPIN'   ;;
     esac
-    if [ "$from_file" == false ] ; then
-        get_locality "$pathlist"
-        error=$?
-        if [ "$error" == 1 ] ; then
-          echo 1>&2 "Error: '$pathlist' does not exist."
-          exit 1
-        fi
-    fi
-    while read -r path ; do
-      bulk_request "$activity" "$path" "$recursive"
-    done <<<"$pathlist" \
-    | column -t -s $'\t'
+    bulk_request "$activity" "$pathlist" "$recursive" | column -t -s $'\t'
     ;;
   events | report-staged )
     if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
