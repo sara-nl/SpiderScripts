@@ -61,9 +61,11 @@ usage() {
     If no authentication method is specified, \$BEARER_TOKEN is used if it exists. 
 
 	Commands:
-
 	  --help
 	      Show this helptext.
+
+	  --version
+	      Show version number.
 
 	  --whoami
 	      Show how dCache identifies you.
@@ -281,6 +283,10 @@ while [ $# -gt 0 ] ; do
     --help | -help | -h )
       usage
       ;;
+    --version )
+      git describe --tags --abbrev=0
+      exit 1
+      ;;      
     --tokenfile )
       auth_method=token
       tokenfile="$2"
