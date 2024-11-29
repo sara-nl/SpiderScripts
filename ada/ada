@@ -283,7 +283,8 @@ while [ $# -gt 0 ] ; do
       usage
       ;;
     --version )
-      git describe --tags --abbrev=0
+      _VERSION_PLACEHOLDER=$(git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
+      echo "${_VERSION_PLACEHOLDER}"
       exit 1
       ;;      
     --tokenfile )
