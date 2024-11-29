@@ -716,7 +716,7 @@ esac
 #
 # Import functions we need.
 #
-. ada_functions.inc
+. "${script_dir}"/ada_functions.inc
 
 
 
