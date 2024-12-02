@@ -3,72 +3,74 @@
 
 
 test_ada_mkdir() {
-    ada/ada --tokenfile ${token_file} --mkdir "/${disk_path}/${dirname}/${testdir}/${subdir}" --recursive --api ${api_url} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --mkdir "/${disk_path}/${dirname}/${testdir}/${subdir}" --recursive --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
-    assertEquals "ada returned error code ${result}" 0 ${result}
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
-    assertTrue "ada could not create the directory" $?
+    assertTrue "ada could not create the directory" $? || return
+    get_locality "${tape_path}/${filestage}"
+    assertTrue "could not get locality" $?
 }
 
 
 test_ada_mv1() {
-    ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${filename}" "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api_url} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${filename}" "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
-    assertEquals "ada returned error code ${result}" 0 ${result}
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
     assertTrue "ada could not move the file" $?
 }
 
 
 test_ada_list_file() {
-    ada/ada --tokenfile ${token_file} --list "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api_url} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --list "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
-    assertEquals "ada returned error code ${result}" 0 ${result}
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
     result=`cat "${stdoutF}"`
     assertEquals "ada could not list the correct file" "/${disk_path}/${dirname}/${testdir}/${filename}" "$result"
 }
 
 
 test_ada_checksum_file() {
-    ada/ada --tokenfile ${token_file} --checksum "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api_url} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --checksum "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
-    assertEquals "ada returned error code ${result}" 0 ${result}
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "${filename}" "${stdoutF}" >/dev/null
     assertTrue "ada could not get checksum of file" $?
 }
 
 
 test_ada_checksum_dir() {
-    ada/ada --tokenfile ${token_file} --checksum "/${disk_path}/${dirname}/${testdir}" --api ${api_url} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --checksum "/${disk_path}/${dirname}/${testdir}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
-    assertEquals "ada returned error code ${result}" 0 ${result}
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "${filename}" "${stdoutF}" >/dev/null
     assertTrue "ada could not get checksum of file" $?
 }
 
 
 test_ada_list_dir() {
-    ada/ada --tokenfile ${token_file} --list "/${disk_path}/${dirname}/${testdir}" --api ${api_url} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --list "/${disk_path}/${dirname}/${testdir}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
-    assertEquals "ada returned error code ${result}" 0 ${result}
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "${filename}" "${stdoutF}" >/dev/null
     assertTrue "ada could not list the correct directory" $?
 }
 
 
 test_ada_longlist() {
-    ada/ada --tokenfile ${token_file} --longlist "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api_url} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --longlist "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
-    assertEquals "ada returned error code ${result}" 0 ${result}
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "${filename}" "${stdoutF}" >/dev/null
     assertTrue "ada could not longlist the correct file" $?
 }
 
 
 test_ada_stat() {
-    ada/ada --tokenfile ${token_file} --stat "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api_url} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --stat "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
-    assertEquals "ada returned error code ${result}" 0 ${result}
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "${filename}" "${stdoutF}" >/dev/null
     assertTrue "ada could not stat the correct file" $?
 }
@@ -76,30 +78,44 @@ test_ada_stat() {
 
 # Move file back to original folder
 test_ada_mv2() {
-    ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${testdir}/${filename}" "/${disk_path}/${dirname}/${filename}" --api ${api_url} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${testdir}/${filename}" "/${disk_path}/${dirname}/${filename}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
-    assertEquals "ada returned error code ${result}" 0 ${result}
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
     assertTrue "ada could not move the file back" $?
 }
 
 # Delete test directory
 test_ada_delete() {
-    ada/ada --tokenfile ${token_file} --delete "/${disk_path}/${dirname}/${testdir}" --recursive --api ${api_url} --force >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --delete "/${disk_path}/${dirname}/${testdir}" --recursive --api ${api} --force >${stdoutF} 2>${stderrF}
     result=$?
-    assertEquals "ada returned error code ${result}" 0 ${result}
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
     assertTrue "ada could not delete the directory" $?
 }
 
 
 test_ada_stage_file() {
-    ada/ada --tokenfile ${token_file} --stage "${tape_path}/${filestage}" --api ${api_url} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --stage "${tape_path}/${filestage}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
-    assertEquals "ada returned error code ${result}" 0 ${result}
-    grep "${filestage}" "${stdoutF}" >/dev/null
-    assertTrue "ada could not stage the file" $?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
+    assertNotNull "No request-url found" $request_url || return
+    state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[0].state'`
+    assertEquals "State of target:" "COMPLETED" $state
 }
+
+
+test_ada_unstage_file() {
+    ada/ada --tokenfile ${token_file} --unstage "${tape_path}/${filestage}" --api ${api} >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
+    assertNotNull "No request-url found" $request_url || return
+    state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[0].state'`
+    assertEquals "State of target:" "COMPLETED" $state
+}
+
 
 
 oneTimeSetUp() {
@@ -130,6 +146,21 @@ oneTimeSetUp() {
             exit 
         fi
     fi
+    # curl options for various activities;
+    curl_options_common=(
+                        -H "accept: application/json"
+                        --fail --silent --show-error
+                        )
+
+    curl_options_post=(
+                        -H "content-type: application/json"
+                    )
+    # Save the header in the file
+    curl_authorization_header_file="${outputDir}/authorization_header"
+    echo "header \"Authorization: Bearer $token\"" > "$curl_authorization_header_file"
+    # Refer to the file with the header
+    curl_authorization=( "--config" "$curl_authorization_header_file" )
+
  
     # Define test files and directories
     dirname="integration_test"
