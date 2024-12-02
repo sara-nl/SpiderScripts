@@ -5,6 +5,42 @@
 #
 
 
+check_macaroon () {
+  # Checks, if possible, whether a macaroon is still valid.
+  local macaroon="$1"
+  if [ -x "${script_dir}/view-macaroon" ] ; then
+    macaroon_viewer="${script_dir}/view-macaroon"
+  else
+    macaroon_viewer="$(command -v view-macaroon)"
+  fi
+  if [ -x "$macaroon_viewer" ] ; then
+    $debug && echo "Macaroon viewer: $macaroon_viewer"
+    endtime=$(
+      $macaroon_viewer <<<"$macaroon" \
+      | sed -n 's/cid before:// p'
+    )
+    if [ -n "$endtime" ] ; then
+      case $OSTYPE in
+        darwin* )  endtime_unix=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${endtime:0:19}" +"%s")  ;;
+        * )        endtime_unix=$(date --date "$endtime" +%s)  ;;
+      esac
+      now_unix=$(date +%s)
+      if [ "$now_unix" -gt "$endtime_unix" ] ; then
+        echo 1>&2 "ERROR: Macaroon is invalid: it expired on $endtime."
+        return 1
+      else
+        $debug && echo "Macaroon has not expired yet."
+      fi
+    else
+      $debug && echo "Could not get token endtime. It may not be a macaroon."
+    fi
+  else
+    $debug && echo "No view-macaroon found; unable to check macaroon."
+  fi
+  return 0
+}
+
+
 urlencode () {
   # We use jq for encoding the URL, because we need jq anyway.
   $debug && echo "urlencoding '$1' to '$(printf '%s' "$1" | jq -sRr @uri)'" 1>&2

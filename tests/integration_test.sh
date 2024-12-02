@@ -115,9 +115,22 @@ oneTimeSetUp() {
     # Import test configuration file
     . "$(dirname "$0")"/test.conf
 
-    # The tests expect a valid macaroon file, you can create it with e.g.:
-    # get-macaroon --url "${webdav_url}"/"${user_path}" --duration P30D --user <user> --permissions DOWNLOAD,UPLOAD,DELETE,MANAGE,LIST,READ_METADATA,UPDATE_METADATA --output rclone $(basename "${token_file%.*}")
-    
+    # Import functions
+    . ada/ada_functions.inc
+
+    # Check if macaroon is valid. If not, try to create one.
+    token=$(sed -n 's/^bearer_token *= *//p' "$token_file")
+    check_macaroon "$token"
+    error=$?
+    if [ $error -eq 1 ]; then
+        echo "The tests expect a valid macaroon. Please enter your CUA credentials to create one."
+        get-macaroon --url "${webdav_url}"/"${user_path}" --duration P1D --user $user --permissions DOWNLOAD,UPLOAD,DELETE,MANAGE,LIST,READ_METADATA,UPDATE_METADATA --output rclone $(basename "${token_file%.*}")
+        if [ $? -eq 1 ]; then 
+            echo "Failed to create a macaroon. Aborting." 
+            exit 
+        fi
+    fi
+ 
     # Define test files and directories
     dirname="integration_test"
     filename="1GBfile"
