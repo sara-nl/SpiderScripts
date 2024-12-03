@@ -2,19 +2,24 @@
 # file: tests/integration_test.sh
 
 
+test_ada_version() {
+    result=`ada/ada --version`
+    assertEquals "Check ada version:" "v2.1" ${result}
+}
+
 test_ada_mkdir() {
     ada/ada --tokenfile ${token_file} --mkdir "/${disk_path}/${dirname}/${testdir}/${subdir}" --recursive --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
     assertTrue "ada could not create the directory" $? || return
-    get_locality "${tape_path}/${filestage}"
+    get_locality "/${disk_path}/${dirname}/${testdir}/${subdir}"
     assertTrue "could not get locality" $?
 }
 
 
 test_ada_mv1() {
-    ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${filename}" "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${testfile}" "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
@@ -23,19 +28,19 @@ test_ada_mv1() {
 
 
 test_ada_list_file() {
-    ada/ada --tokenfile ${token_file} --list "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --list "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     result=`cat "${stdoutF}"`
-    assertEquals "ada could not list the correct file" "/${disk_path}/${dirname}/${testdir}/${filename}" "$result"
+    assertEquals "ada could not list the correct file" "/${disk_path}/${dirname}/${testdir}/${testfile}" "$result"
 }
 
 
 test_ada_checksum_file() {
-    ada/ada --tokenfile ${token_file} --checksum "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --checksum "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
-    grep "${filename}" "${stdoutF}" >/dev/null
+    grep "${testfile}" "${stdoutF}" >/dev/null
     assertTrue "ada could not get checksum of file" $?
 }
 
@@ -44,7 +49,7 @@ test_ada_checksum_dir() {
     ada/ada --tokenfile ${token_file} --checksum "/${disk_path}/${dirname}/${testdir}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
-    grep "${filename}" "${stdoutF}" >/dev/null
+    grep "${testfile}" "${stdoutF}" >/dev/null
     assertTrue "ada could not get checksum of file" $?
 }
 
@@ -53,32 +58,32 @@ test_ada_list_dir() {
     ada/ada --tokenfile ${token_file} --list "/${disk_path}/${dirname}/${testdir}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
-    grep "${filename}" "${stdoutF}" >/dev/null
+    grep "${testfile}" "${stdoutF}" >/dev/null
     assertTrue "ada could not list the correct directory" $?
 }
 
 
 test_ada_longlist() {
-    ada/ada --tokenfile ${token_file} --longlist "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --longlist "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
-    grep "${filename}" "${stdoutF}" >/dev/null
+    grep "${testfile}" "${stdoutF}" >/dev/null
     assertTrue "ada could not longlist the correct file" $?
 }
 
 
 test_ada_stat() {
-    ada/ada --tokenfile ${token_file} --stat "/${disk_path}/${dirname}/${testdir}/${filename}" --api ${api} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --stat "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
-    grep "${filename}" "${stdoutF}" >/dev/null
+    grep "${testfile}" "${stdoutF}" >/dev/null
     assertTrue "ada could not stat the correct file" $?
 }
 
 
 # Move file back to original folder
 test_ada_mv2() {
-    ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${testdir}/${filename}" "/${disk_path}/${dirname}/${filename}" --api ${api} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${testdir}/${testfile}" "/${disk_path}/${dirname}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
@@ -96,7 +101,7 @@ test_ada_delete() {
 
 
 test_ada_stage_file() {
-    ada/ada --tokenfile ${token_file} --stage "${tape_path}/${filestage}" --api ${api} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --stage "/${tape_path}/${dirname}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
@@ -107,7 +112,7 @@ test_ada_stage_file() {
 
 
 test_ada_unstage_file() {
-    ada/ada --tokenfile ${token_file} --unstage "${tape_path}/${filestage}" --api ${api} >${stdoutF} 2>${stderrF}
+    ada/ada --tokenfile ${token_file} --unstage "/${tape_path}/${dirname}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
@@ -115,7 +120,6 @@ test_ada_unstage_file() {
     state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[0].state'`
     assertEquals "State of target:" "COMPLETED" $state
 }
-
 
 
 oneTimeSetUp() {
@@ -164,12 +168,27 @@ oneTimeSetUp() {
  
     # Define test files and directories
     dirname="integration_test"
-    filename="1GBfile"
-    filestage="2GBfile"
+    testfile="1GBfile"
     testdir="testdir"
     subdir="subdir"
 
+    # Create test data and transfer to dCache:
+    case $OSTYPE in
+      darwin* )
+        mkfile 1g $testfile   
+        ;;
+      * )
+        fallocate -x -l 1G $testfile
+        ;;
+    esac
+    rclone -P copyto --config=${token_file} ${PWD}/$testfile  $(basename "${token_file%.*}"):/${tape_path}/${dirname}/${testfile} 
+
 }
+
+tearDown() {
+  rm -f $testfile
+}
+
 
 # Load and run shunit2
 . shunit2

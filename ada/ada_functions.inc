@@ -249,7 +249,6 @@ delete_path () {
 
 get_locality () {
   local path="$1"
-  $debug || echo -n "$file  "
   locality="$((\
     $debug && set -x   # If --debug is specified, show (only) curl command
     curl "${curl_authorization[@]}" \

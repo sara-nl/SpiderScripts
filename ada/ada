@@ -284,7 +284,8 @@ while [ $# -gt 0 ] ; do
       usage
       ;;
     --version )
-      _VERSION_PLACEHOLDER=$(git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
+      git_dir=$(dirname "${script_dir}")
+      _VERSION_PLACEHOLDER=$(git --git-dir=${git_dir}/.git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
       echo "${_VERSION_PLACEHOLDER}"
       exit 1
       ;;      
