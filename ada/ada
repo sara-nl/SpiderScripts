@@ -607,17 +607,21 @@ get_files_in_dir () {
 
 
 get_children () {
-  local path
-  path=$(urlencode "$1")
-  curl "${curl_authorization[@]}" \
+  local path=$(urlencode "$1")
+  command='curl "${curl_authorization[@]}" \
        "${curl_options_common[@]}" \
        -X GET "$api/namespace/$path?children=true" \
-  | jq -r '.children | .[] | .fileName'
+  | jq -r ".children | .[] | .fileName"'
+  if $dry_run ; then
+    echo "$command"
+  else
+    eval "$command"
+  fi     
 }
 
 
 dir_has_items () {
-  path="$1"
+  local path="$1"
   get_children "$path" | grep --silent --max-count 1 '.'
 }
 
@@ -627,7 +631,7 @@ get_confirmation () {
   while true ; do
     # We read the answer from tty, otherwise strange things would happen.
     read -r -p "$prompt (N/y) " -n1 answer < /dev/tty
-    echo
+    # echo
     case $answer in
       Y | y )       return 0  ;;
       N | n | '' )  return 1  ;;

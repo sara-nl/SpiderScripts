@@ -98,6 +98,18 @@ test_get_files_in_dir() {
 }
 
 
+test_get_children() {
+  result=`get_files_in_dir "/test/a/b/c"`
+  expected='curl "${curl_authorization[@]}" \
+       "${curl_options_common[@]}" \
+       -X GET "$api/namespace/$path?children=true" \
+  | jq -r "$str"'
+  assertEquals \
+      "the result of get_files_in_dir() was wrong" \
+      "${expected}" "${result}"
+}
+
+
 oneTimeSetUp() {
   outputDir="${SHUNIT_TMPDIR}/output"
   mkdir "${outputDir}"
