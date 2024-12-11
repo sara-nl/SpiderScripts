@@ -122,6 +122,30 @@ test_ada_unstage_file() {
     assertEquals "State of target:" "COMPLETED" $state
 }
 
+test_ada_stage_filelist() {
+    echo  "/${tape_path}/${dirname}/${testfile}" > ${outputDir}/file_list
+    ada/ada --tokenfile ${token_file} --stage --from-file ${outputDir}/file_list  --api ${api} >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
+    assertNotNull "No request-url found" $request_url || return
+    # sleep 2 # needed if request is still RUNNING
+    state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[0].state'`
+    assertEquals "State of target:" "COMPLETED" $state
+}
+
+
+test_ada_unstage_filelist() {
+    ada/ada --tokenfile ${token_file} --unstage --from-file ${outputDir}/file_list --api ${api} >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
+    assertNotNull "No request-url found" $request_url || return
+    # sleep 2    
+    state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[0].state'`
+    assertEquals "State of target:" "COMPLETED" $state
+}
+
 
 oneTimeSetUp() {
     outputDir="${SHUNIT_TMPDIR}/output"
