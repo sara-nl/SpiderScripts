@@ -7,6 +7,7 @@ test_ada_version() {
     assertEquals "Check ada version:" "v2.1" ${result}
 }
 
+
 test_ada_mkdir() {
     ada/ada --tokenfile ${token_file} --mkdir "/${disk_path}/${dirname}/${testdir}/${subdir}" --recursive --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
@@ -136,7 +137,7 @@ oneTimeSetUp() {
     . "$(dirname "$0")"/test.conf
 
     # Import functions
-    . ada/ada_functions.inc
+    . ada/ada
 
     # Check if macaroon is valid. If not, try to create one.
     token=$(sed -n 's/^bearer_token *= *//p' "$token_file")
@@ -184,6 +185,7 @@ oneTimeSetUp() {
     rclone -P copyto --config=${token_file} ${PWD}/$testfile  $(basename "${token_file%.*}"):/${tape_path}/${dirname}/${testfile} 
 
 }
+
 
 tearDown() {
   rm -f $testfile

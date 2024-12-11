@@ -107,7 +107,7 @@ oneTimeSetUp() {
   dry_run=true
 
   # Load functions to test
-  . ada/ada_functions.inc
+  . ada/ada
 }
 
 
