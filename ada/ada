@@ -1560,7 +1560,7 @@ api_call () {
         stage   )  activity='PIN'     ;;
         unstage )  activity='UNPIN'   ;;
       esac
-      bulk_request "$activity" "$pathlist" "$recursive" | column -t -s $'\t'
+      bulk_request "$activity" "$pathlist" "$recursive"
       ;;
     events | report-staged )
       if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
