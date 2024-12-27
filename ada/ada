@@ -7,6 +7,7 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
+# 2024-12-27 - Onno    - Improved token validation
 # 2024-11-26 - Haili   - Add --recursive to --mkdir
 # 2024-09-12 - Haili   - Added bulk requests for staging and unstaging
 # 2024-08-24 - Haili   - Added option to use env var BEARER_TOKEN
@@ -30,7 +31,7 @@ usage() {
   cat <<-EOF
 	ADA - Advanced dCache API tool to manage your data in dCache.
 	Usage: $0 [general options...] [authentication] <command> [command options]
-	
+
 	Demo video at https://www.youtube.com/watch?v=Bh0kpTcUUcw .
 
 	General options:
@@ -58,7 +59,7 @@ usage() {
 	      Authenticate with a Grid proxy.
 	      If no filename was provided, use \$X509_USER_PROXY.
 
-    If no authentication method is specified, \$BEARER_TOKEN is used if it exists. 
+    If no authentication method is specified, \$BEARER_TOKEN is used if it exists.
 
 	Commands:
 	  --help
@@ -69,6 +70,13 @@ usage() {
 
 	  --whoami
 	      Show how dCache identifies you.
+
+	  --viewtoken
+	      View all properties of the provided bearer token.
+	      This can be a Macaroon or OIDC token specified by:
+	        --tokenfile <file>
+	        \$ada_tokenfile=<file>
+	        \$BEARER_TOKEN=token
 
 	  --list <directory>
 	      List a directory.
@@ -108,8 +116,8 @@ usage() {
 	  --stage <file> [--lifetime <duration>]
 	      Stage a file from tape (restore, bring it online).
 	      With --lifetime the pin lifetime duration, e.g. 7D.
-	      Allowed units are S, M, H or D, standing for seconds, 
-	      minutes, hours, or days. 
+	      Allowed units are S, M, H or D, standing for seconds,
+	      minutes, hours, or days.
 	      If --lifetime is not given, default is 7D.
 	  --stage <directory> [--recursive]
 	      Stage files in directory.
@@ -160,28 +168,28 @@ usage() {
 
 
 	Configuration files:
-	
+
 	  Default values can be stored in /etc/ada.conf and ~/.ada/ada.conf.
 	  For example:
 	  api='https://prometheus.desy.de:3880/api/v1/'
-	
-	
+
+
 	Environment variables:
-	  
+
 	  Ada will use these environment variables if they exist (in order of precedence):
 	    BEARER_TOKEN
-	    ada_tokenfile       => --tokenfile  
+	    ada_tokenfile       => --tokenfile
 	    ada_netrcfile       => --netrcfile
 	    ada_api             => --api
 	    ada_debug           => --debug
 	    ada_channel_timeout => --timeout
 	    X509_USER_PROXY
 	    X509_CERT_DIR
-	    
+
 	  You may need to export them, like:
 	    export ada_debug=true ; ada ...
-	  
-	  Environment variables override values from configuration files, 
+
+	  Environment variables override values from configuration files,
 	  but not from the command line.
 	  So the order of precedence is:
 	    1. command line arguments
@@ -263,10 +271,12 @@ fi
 if [ -n "$ada_tokenfile" ] ; then
   tokenfile="$ada_tokenfile"
   auth_method=token
+  token_debug_info="Token source: \$ada_tokenfile=$ada_tokenfile"
 fi
 if [ -n "$BEARER_TOKEN" ] ; then
   token="$BEARER_TOKEN"
   auth_method=token
+  token_debug_info="Token source: \$BEARER_TOKEN"
 fi
 
 # Initialize some vars we don't want to be overridden
@@ -286,10 +296,11 @@ while [ $# -gt 0 ] ; do
       _VERSION_PLACEHOLDER=$(git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
       echo "${_VERSION_PLACEHOLDER}"
       exit 1
-      ;;      
+      ;;
     --tokenfile )
       auth_method=token
       tokenfile="$2"
+      token_debug_info="Token source: --tokenfile $tokenfile"
       shift ; shift
       ;;
     --netrc )
@@ -328,6 +339,10 @@ while [ $# -gt 0 ] ; do
       ;;
     --whoami )
       command='whoami'
+      shift
+      ;;
+    --viewtoken )
+      command='viewtoken'
       shift
       ;;
     --list )
@@ -425,8 +440,8 @@ while [ $# -gt 0 ] ; do
       arg="$2"
       lifetime=${arg::${#arg} -1}
       lifetime_unit=${arg: ${#arg}-1}
-      shift ; shift 
-      ;;        
+      shift ; shift
+      ;;
     --timeout )
       channel_timeout="$2"
       shift ; shift
@@ -486,7 +501,7 @@ case $lifetime_unit in
     lifetime_unit=SECONDS
     ;;
   M )
-    lifetime_unit=MINUTES  
+    lifetime_unit=MINUTES
     ;;
   H )
     lifetime_unit=HOURS
@@ -501,7 +516,7 @@ case $lifetime_unit in
 esac
 
 # We need some external commands.
-for external_command in curl jq sed grep column sort tr ; do
+for external_command in curl jq sed grep column sort tr base64 ; do
   if ! command -v "$external_command" >/dev/null 2>&1 ; then
     echo >&2 "ERROR: I require '$external_command' but it's not installed."
     exit 1
@@ -509,40 +524,141 @@ for external_command in curl jq sed grep column sort tr ; do
 done
 
 
-check_macaroon () {
-  # Checks, if possible, whether a macaroon is still valid.
-  local macaroon="$1"
-  if [ -x "${script_dir}/view-macaroon" ] ; then
-    macaroon_viewer="${script_dir}/view-macaroon"
-  else
-    macaroon_viewer="$(command -v view-macaroon)"
-  fi
-  if [ -x "$macaroon_viewer" ] ; then
-    $debug && echo "Macaroon viewer: $macaroon_viewer"
-    endtime=$(
-      $macaroon_viewer <<<"$macaroon" \
-      | sed -n 's/cid before:// p'
-    )
-    if [ -n "$endtime" ] ; then
-      case $OSTYPE in
-        darwin* )  endtime_unix=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${endtime:0:19}" +"%s")  ;;
-        * )        endtime_unix=$(date --date "$endtime" +%s)  ;;
-      esac
-      now_unix=$(date +%s)
-      if [ "$now_unix" -gt "$endtime_unix" ] ; then
-        echo 1>&2 "ERROR: Macaroon is invalid: it expired on $endtime."
-        return 1
-      else
-        $debug && echo "Macaroon has not expired yet."
-      fi
-    else
-      $debug && echo "Could not get token endtime. It may not be a macaroon."
+view_token() {
+  local token="$1"
+  local token_debug_info="$2"
+
+  echo "$token_debug_info"
+
+  # Determine token type (JWT or Macaroon)
+  if [[ "$token" =~ ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]]; then
+    # JWT / OIDC token.
+
+    # Get payload with the token properties.
+    payload=$(echo "$token" | cut -d "." -f2 | base64 -d 2>/dev/null | tr -d '\n')
+
+    # Check if decoding succeeded
+    if [ -z "$payload" ]; then
+      echo "Invalid token: cannot decode payload"
+      return 1
     fi
+
+    # Print JWT/OIDC token with human readable timestamps
+    echo "$payload" | jq '. | .exp |= todate | .nbf |= todate | .iat |= todate'
   else
-    $debug && echo "No view-macaroon found; unable to check macaroon."
+    # Not an OIDC token; probably a Macaroon
+    macaroon_decoded=$(echo "$token" | base64 -d 2>/dev/null | awk '{print substr($0, 5)}' 2>/dev/null)
+
+    # Check if decoding succeeded
+    if [ -z "$macaroon_decoded" ]; then
+      echo "Invalid macaroon: cannot decode"
+      return 1
+    fi
+
+    # Show macaroon without signature
+    echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | grep -v 'signature' | sed -e 's/^/  /'
   fi
-  return 0
 }
+
+
+
+check_token() {
+  local token="$1"
+  local token_debug_info="$2"
+
+  # Determine token type (JWT or Macaroon)
+  if [[ "$token" =~ ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]]; then
+    # JWT / OIDC token
+    $debug && echo "Checking JWT / OIDC token..."
+    payload=$(echo "$token" | cut -d "." -f2 | base64 -d 2>/dev/null | tr -d '\n')
+
+    # Check if decoding succeeded
+    if [ -z "$payload" ]; then
+      echo 1>&2 "ERROR: Invalid token: cannot decode payload"
+      echo 1>&2 "$token_debug_info"
+      return 1
+    fi
+
+    # Extract expiration time (exp) from payload
+    exp=$(echo "$payload" | jq -r '.exp' 2>/dev/null)
+
+    # Validate expiration field
+    if [ -z "$exp" ] || ! [[ "$exp" =~ ^[0-9]+$ ]]; then
+      echo 1>&2 "ERROR: Invalid token: missing or invalid 'exp' field"
+      echo 1>&2 "$token_debug_info"
+      return 1
+    fi
+
+    # Get the current time in seconds since epoch
+    now=$(date +%s)
+
+    # Check if the token is expired
+    if [ "$now" -ge "$exp" ]; then
+      echo 1>&2 "$token_debug_info"
+      # Print JWT/OIDC token with human readable timestamps
+      echo "$payload" | jq '. | .exp |= todate | .nbf |= todate | .iat |= todate' 1>&2
+      # print error
+      echo 1>&2 "ERROR: JWT / OIDC token has expired $(( now - exp )) seconds ago."
+      return 1
+    fi
+
+    # If we get here, it means we have a valid OIDC token.
+    $debug && echo "$payload" | jq '. | .exp |= todate | .nbf |= todate | .iat |= todate'
+    $debug && echo "JWT / OIDC token is valid"
+    return 0
+
+  else
+    # Macaroon Token (assume it's base64 encoded)
+    $debug && echo "Checking Macaroon token..."
+
+    macaroon_decoded=$(echo "$token" | base64 -d 2>/dev/null | awk '{print substr($0, 5)}' 2>/dev/null)
+
+    # Check if decoding succeeded
+    if [ -z "$macaroon_decoded" ]; then
+      echo 1>&2 "ERROR: Invalid token: cannot decode"
+      echo 1>&2 "$token_debug_info"
+      return 1
+    fi
+
+    # Extract expiration time (before) using regex
+    exp=$(echo "$macaroon_decoded" | grep -o 'before:[0-9T:\.-]*Z' | sed -e 's/before://')
+
+    # Validate expiration field
+    if [ -z "$exp" ]; then
+      echo 1>&2 "ERROR: invalid macaroon: missing 'before' field"
+      echo 1>&2 "$token_debug_info"
+      return 1
+    fi
+
+    # Convert expiration time to epoch seconds
+    exp_epoch=$(date -d "$exp" +%s 2>/dev/null)
+
+    if [ -z "$exp_epoch" ]; then
+      echo 1>&2 "ERROR: invalid macaroon: unable to parse 'before' timestamp"
+      echo 1>&2 "$token_debug_info"
+      return 1
+    fi
+
+    # Get the current time in UTC in seconds since epoch
+    now=$(date +%s)
+
+    # Check if the macaroon is expired
+    if [ "$now" -ge "$exp_epoch" ]; then
+      echo 1>&2 "$token_debug_info"
+      # Show macaroon without signature
+      echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | grep -v 'signature' | sed -e 's/^/  /' 1>&2
+      # Show error
+      echo 1>&2 "ERROR: Macaroon has expired $((now - exp_epoch)) seconds ago."
+      return 1
+    fi
+
+    # If we get here, it means we have a valid macaroon.
+    $debug && echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | grep -v 'signature' | sed -e 's/^/  /'
+    $debug && echo "Macaroon is valid"
+    return 0
+  fi
+}
+
 
 
 # If the API address ends with a /, strip it
@@ -559,7 +675,7 @@ fi
 
 case $auth_method in
   token )
-    if [ -n "$tokenfile" ] ; then 
+    if [ -n "$tokenfile" ] ; then
       if ! [ -f "$tokenfile" ] ; then
         echo 1>&2 "ERROR: specified tokenfile does not exist."
         exit 1
@@ -570,7 +686,7 @@ case $auth_method in
         echo 1>&2 "ERROR: file '$tokenfile' contains multiple tokens."
         exit 1
       fi
-      # If it was not an rclone config file, it may be a 
+      # If it was not an rclone config file, it may be a
       # plain text file with only the token.
       if [ -z "$token" ] ; then
         token=$(head -n 1 "$tokenfile")
@@ -580,10 +696,10 @@ case $auth_method in
         exit 1
       fi
     elif ! [ -n "$token" ] ; then
-      echo 1>&2 "ERROR: no tokenfile, nor variable BEARER_TOKEN specified."
+      echo 1>&2 "ERROR: neither tokenfile, nor variable BEARER_TOKEN specified."
       exit 1
     fi
-    check_macaroon "$token" || exit 1
+    check_token "$token" "$token_debug_info" || exit 1
     ;;
   netrc )
     if [ ! -f "$netrcfile" ] ; then
@@ -613,6 +729,7 @@ case $auth_method in
 esac
 
 
+# Command specific input validation
 case $command in
   list | stat | mkdir | mv | delete | events | report-staged )
     if [[ -z $path || $path =~ ^-- ]] ; then
@@ -640,11 +757,18 @@ case $command in
       exit 1
     fi
     ;;
+  viewtoken )
+    if [ -z "$token" ] ; then
+      echo 1>&2 "ERROR: command --viewtoken requires a token, but no token was found."
+      echo 1>&2 "Please refer to the help text on how to provide a token."
+      exit 1
+    fi
+    ;;
+  whoami | channels | space )
+    ;;
   '' )
     echo 1>&2 "ERROR. Please specify a command. See --help for more information."
     exit 1
-    ;;
-  whoami | channels | space )
     ;;
   * )
     echo 1>&2 "ERROR: command '$command' is not implemented."
@@ -822,7 +946,7 @@ create_path () {
   let counter++
   if [ $counter -gt 10 ] ; then
     echo 1>&2 "ERROR: max number of directories that can be created at once is 10."
-    exit 1  
+    exit 1
   fi
   local path="$1"
   local recursive="$2"
@@ -837,10 +961,10 @@ create_path () {
       echo 1>&2 "ERROR: Unable to create dirs. Check the specified path."
       exit 1
     fi
-  elif [ $error == 1 ]; then 
+  elif [ $error == 1 ]; then
     echo 1>&2 "ERROR: parent dir '$parent' does not exist. To recursivly create dirs, add --recursive."
     exit 1
-  fi 
+  fi
   parent=$(urlencode "$(dirname "$path")")
   name=$(basename "$path")
   (
@@ -892,7 +1016,7 @@ delete_path () {
     echo "Deleting $path - aborted."
     # Tell higher level that user aborted,
     # because deleting the parent dir is useless.
-    return 1  
+    return 1
   else
     echo -n "Deleting $path - "
     encoded_path=$(urlencode "$path")
@@ -966,9 +1090,9 @@ bulk_request() {
     fi
   fi
   case $activity in
-    PIN   )    
+    PIN   )
       arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}" ;;
-    UNPIN )    
+    UNPIN )
       arguments="{}" ;;
   esac
   target='['
@@ -979,13 +1103,13 @@ bulk_request() {
   data="{\"activity\": \"${activity}\", \"arguments\": ${arguments}, \"target\": ${target}, \"expand_directories\": \"${expand}\"}"
   $debug || echo "$target  "
   (
-    $debug && set -x   # If --debug is specified, show (only) curl command 
+    $debug && set -x   # If --debug is specified, show (only) curl command
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
          "${curl_options_post[@]}" \
-         -X POST "$api/bulk-requests"\
+         -X POST "$api/bulk-requests" \
          -d "${data}" \
-         --dump-header - 
+         --dump-header -
   ) | grep -e request-url -e Date | tee -a "${requests_log}"
   $debug && echo "Information about bulk request is logged in $requests_log."
   echo "activity: $activity" >> $requests_log
@@ -1210,7 +1334,7 @@ follow_channel () {
           case $event_type in
             inotify )
               $debug && { echo ; echo "$value" | jq --compact-output ; }
-              # Sometimes there's no .event.name: 
+              # Sometimes there's no .event.name:
               # then 'select (.!=null)' will output an empty string.
               object_name=$(jq -r '.event.name | select (.!=null)' <<< "$value")
               mask=$(jq -r '.event.mask | @csv' <<< "$value" | tr -d '"')
@@ -1284,10 +1408,10 @@ follow_channel () {
               ;;
             SYSTEM )
               # For system type events we just want the raw output.
-              echo -e "$event_type  $value"              
+              echo -e "$event_type  $value"
               ;;
             '' )
-              # If we get a data line that was not preceded by an 
+              # If we get a data line that was not preceded by an
               # event line, something is wrong.
               echo "Unexpected data line: '$value' near event ID '$event_id'."
               ;;
@@ -1324,7 +1448,7 @@ list_online_files () {
          "${curl_options_common[@]}" \
          -X GET "$api/namespace/$encoded_path?children=true&locality=true&qos=true"
   ) \
-  | jq -r '.children 
+  | jq -r '.children
            | .[]
            | if .fileType == "REGULAR" then . else empty end
            | [ .fileLocality ,
@@ -1348,6 +1472,9 @@ list_online_files () {
 #
 
 case $command in
+  viewtoken )
+    view_token "$token" "$token_debug_info"
+    ;;
   whoami )
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
@@ -1441,7 +1568,7 @@ case $command in
     done <<<"$pathlist" \
     | column -t -s $'\t' \
     | sort
-    ;;    
+    ;;
   stat )
     pnfsid=$(get_pnfsid "$path")
     if [ -z "$pnfsid" ] ; then
