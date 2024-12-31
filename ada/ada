@@ -1497,6 +1497,20 @@ list_online_files () {
 }
 
 
+get_dcache_versions () {
+  # Prints the version(s) of dCache.
+  # Why multiple versions? Each dCache cell (service) can have its own unique version,
+  # depending on considerations of the sysadmin.
+  # We print a JSON array of all unique versions.
+  (
+    $debug && set -x   # If --debug is specified, show (only) curl command
+    curl "${curl_authorization[@]}" \
+         "${curl_options_common[@]}" \
+         -X GET "$api/cells" \
+    | jq -c 'map(.version) | unique'
+  )
+}
+
 
 
 #
@@ -1508,6 +1522,10 @@ case $command in
     view_token "$token" "$token_debug_info"
     ;;
   whoami )
+    echo "dCache API: $api"
+    echo -n "dCache version(s): "
+    get_dcache_versions
+    echo "User identity:"
     (
       $debug && set -x   # If --debug is specified, show (only) curl command
       curl "${curl_authorization[@]}" \
