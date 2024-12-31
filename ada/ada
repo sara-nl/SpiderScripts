@@ -7,6 +7,7 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
+# 2024-12-30 - Onno    - Add support for labels
 # 2024-12-27 - Onno    - Improved token validation
 # 2024-11-26 - Haili   - Add --recursive to --mkdir
 # 2024-09-12 - Haili   - Added bulk requests for staging and unstaging
@@ -92,11 +93,17 @@ usage() {
 	  --mkdir <directory> [--recursive]
 	      Create a directory.
 	      To recursively create a directory and ALL of its
-	      parents, add --recursive. For safety, the maximum number 
+	      parents, add --recursive. For safety, the maximum number
 	      of directories that can be created at once is 10.
 
 	  --mv <file|directory> <destination>
 	      Rename or move a file or directory.
+
+	  --setlabel <file> <label>
+	      Attach a label to a file.
+
+	  --rmlabel <file> <label>
+	      Remove a label from a file.
 
 	  --delete <file|directory> [--recursive [--force]]
 	      Delete a file or directory.
@@ -381,6 +388,24 @@ while [ $# -gt 0 ] ; do
       command='delete'
       path="$2"
       shift ; shift
+      ;;
+    --setlabel )
+      command='setlabel'
+      path="$2"
+      label="$3"
+      shift ; shift ; shift
+      ;;
+    --rmlabel )
+      command='rmlabel'
+      path="$2"
+      label="$3"
+      shift ; shift ; shift
+      ;;
+    --findlabel )
+      command='findlabel'
+      path="$2"
+      label="$3"
+      shift ; shift ; shift
       ;;
     --checksum )
       command='checksum'
@@ -731,7 +756,7 @@ esac
 
 # Command specific input validation
 case $command in
-  list | stat | mkdir | mv | delete | events | report-staged )
+  list | stat | mkdir | mv | setlabel | rmlabel | delete | events | report-staged )
     if [[ -z $path || $path =~ ^-- ]] ; then
       echo 1>&2 "ERROR: command $command requires a path."
       exit 1
@@ -740,6 +765,12 @@ case $command in
       mv )
         if [[ -z $destination || $destination =~ ^-- ]] ; then
           echo 1>&2 "ERROR: command $command requires a destination."
+          exit 1
+        fi
+        ;;
+      setlabel | rmlabel )
+        if [[ -z $label || $label =~ ^-- ]] ; then
+          echo 1>&2 "ERROR: command $command requires a label."
           exit 1
         fi
         ;;
@@ -1034,7 +1065,7 @@ delete_path () {
 get_locality () {
   local path="$1"
   $debug || echo -n "$file  "
-  locality="$((\
+  locality="$( (\
     $debug && set -x   # If --debug is specified, show (only) curl command
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
@@ -1467,6 +1498,7 @@ list_online_files () {
 
 
 
+
 #
 # Execute API call(s).
 #
@@ -1628,6 +1660,34 @@ case $command in
         echo "Unknown object type '$type'. Please create an issue for this in Github."
         ;;
     esac
+    ;;
+  setlabel | rmlabel )
+    case $(pathtype "$path") in
+      DIR )
+        echo 1>&2 "ERROR: target '$path' is a directory. dCache does not support labels on directories."
+        exit 1
+        ;;
+      LINK )
+        echo 1>&2 "WARNING: target '$path' is a symlink. A symlink can point to a file or a directory." \
+                  "dCache does not support labels on directories." \
+                  "Ada will continue. But if this symlink point to a direcory, the result may be unexpected."
+        ;;
+    esac
+    case $command in
+      setlabel )  action='set-label' ;;
+      rmlabel  )  action='rm-label'  ;;
+      * )         echo 1>&2 "Unexpected label command '$command'." ; exit 1 ;;
+    esac
+    encoded_path=$(urlencode "$path")
+    (
+      $debug && set -x   # If --debug is specified, show (only) curl command
+      curl "${curl_authorization[@]}" \
+           "${curl_options_common[@]}" \
+           "${curl_options_post[@]}" \
+           -X POST "$api/namespace/$encoded_path" \
+           -d "{\"action\":\"$action\",\"label\":\"$label\"}"
+    ) \
+    | jq -r .status
     ;;
   checksum )
     while read -r path ; do
