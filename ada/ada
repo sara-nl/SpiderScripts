@@ -99,12 +99,6 @@ usage() {
 	  --mv <file|directory> <destination>
 	      Rename or move a file or directory.
 
-	  --setlabel <file> <label>
-	      Attach a label to a file.
-
-	  --rmlabel <file> <label>
-	      Remove a label from a file.
-
 	  --delete <file|directory> [--recursive [--force]]
 	      Delete a file or directory.
 	      To recursively delete a directory and ALL of its
@@ -112,6 +106,41 @@ usage() {
 	      deletion of each subdir, unless you add --force.
 	      Please note, that dCache storage systems usually
 	      don't have an undelete option.
+
+	  --setlabel <file> <label>
+	      Attach a label to a file.
+	  --rmlabel <file> <label>
+	  --rmlabel <file> --all
+	      Remove one or all label from a file.
+	  --lslabel <file> [label]
+	      List labels of a file.
+	      If label is provided, only list that label.
+	  --findlabel <directory> <label> [--recursive]
+	      Find files in this directory that have this label.
+	      If --recursive is specified, search also in
+	      subdirectories.
+
+	  --setxattr <file> <file-with-attributes>
+	      Add extended attributes to a file.
+	      This will read the extended attributes from a file,
+	      or from stdin of no file, or a '-', is specified.
+	      The attributes should be a list of key-value pairs
+	      separated by an equal sign (=), a comma (,) or a tab,
+	      or it can be a JSON object.
+	  --rmxattr <file> <key>
+	  --rmxattr <file> --all
+	      Remove one or all key-value pairs from the extended
+	      attributes.
+	  --lsxattr <file> [key]
+	      List extended attributes of a file.
+	      If key is provided, only list that key-value pair.
+	  --findxattr <directory> <key> <value> [--recursive]
+	  --findxattr <directory> --all <value> [--recursive]
+	      Find files in the directory that match the key-value pair.
+	      The value can be a regular expression (example: '.*keyword.*').
+	      If --all is specified, search in all attributes.
+	      If --recursive is specified, search also in
+	      subdirectories.
 
 	  --checksum <file>
 	      Show MD5/Adler32 checksums for file.
@@ -401,10 +430,85 @@ while [ $# -gt 0 ] ; do
       label="$3"
       shift ; shift ; shift
       ;;
+    --lslabel )
+      command='lslabel'
+      path="$2"
+      shift ; shift
+      # Optinal argument: a label the user wants to see.
+      case $1 in
+        --* | '' )
+          # Next argument is another option or absent; not a label.
+          ;;
+	* )
+          # This must be a label
+          label="$1"
+          shift
+          ;;
+      esac
+      ;;
     --findlabel )
       command='findlabel'
       path="$2"
-      label="$3"
+      regex="$3"
+      shift ; shift ; shift
+      ;;
+    --setxattr )
+      command='setxattr'
+      path="$2"
+      shift ; shift
+      # Optinal argument: filename containing the attributes (or - for stdin)
+      case $1 in
+        --* | '' )
+          # Next argument is another option or absent; not a file name.
+          # We will read attributes from stdin.
+          echo "No file with attributes specified. Will read attributes from stdin."
+          xattr_file='/dev/stdin'
+          ;;
+        - )
+          # User wants to read attributes from stdin.
+          xattr_file='/dev/stdin'
+          shift
+          ;;
+        * )
+          # This must be a file name
+          if [ -f "$1" ] ; then
+            xattr_file="$1"
+          else
+            echo 1>&2 "ERROR: Can't read attributes from file '$1'. Does it exist?"
+            exit 1
+          fi
+          shift
+          ;;
+      esac
+      ;;
+    --lsxattr )
+      command='lsxattr'
+      path="$2"
+      shift ; shift
+      # Optinal argument: name of an attribute
+      case $1 in
+        --* | '' )
+          # Next argument is another option or absent; not an attribute name.
+          ;;
+	* )
+          # This must be an attribute name
+          attribute_name="$1"
+          shift
+          ;;
+      esac
+      ;;
+    --findxattr )
+      command='findxattr'
+      # Strip trailing slashes
+      path=$(echo "$2" | sed 's:/*$::')
+      attribute_name="$3"
+      regex="$4"
+      shift ; shift ; shift ; shift
+      ;;
+    --rmxattr )
+      command='rmxattr'
+      path="$2"
+      attribute_name="$3"
       shift ; shift ; shift
       ;;
     --checksum )
@@ -756,7 +860,10 @@ esac
 
 # Command specific input validation
 case $command in
-  list | stat | mkdir | mv | setlabel | rmlabel | delete | events | report-staged )
+  list | stat | mkdir | mv | delete | \
+  setlabel | lslabel | findlabel | rmlabel | \
+  setxattr | lsxattr | findxattr | rmxattr | \
+  events | report-staged )
     if [[ -z $path || $path =~ ^-- ]] ; then
       echo 1>&2 "ERROR: command $command requires a path."
       exit 1
@@ -771,6 +878,22 @@ case $command in
       setlabel | rmlabel )
         if [[ -z $label || $label =~ ^-- ]] ; then
           echo 1>&2 "ERROR: command $command requires a label."
+          exit 1
+        fi
+        ;;
+      findlabel )
+        if [[ -z $regex || $regex =~ ^-- ]] ; then
+          echo 1>&2 "ERROR: command $command requires a regular expression."
+          exit 1
+        fi
+        ;;
+      findxattr )
+        if [[ -z $attribute_name ]] ; then
+          echo 1>&2 "ERROR: command $command requires an attribute name, or '--all' to search through all attribute values."
+          exit 1
+        fi
+        if [[ -z $regex || $regex =~ ^-- ]] ; then
+          echo 1>&2 "ERROR: command $command requires a regular expression."
           exit 1
         fi
         ;;
@@ -959,6 +1082,115 @@ dir_has_items () {
 }
 
 
+find_label () {
+  local path
+  local regex
+  local recursive
+  path="$1"
+  regex="$2"
+  recursive="$3"
+  encoded_path=$(urlencode "$path")
+  # We can only search dirs. Searching a file doesn't make sense, because we have found it.
+  if [[ $(pathtype $path) == "REGULAR" ]] ; then
+    echo 1>&2 "ERROR: $path is a file. Please specify a directory."
+    exit 1
+  fi
+  # We search for files in this dir with a label that matches the regex.
+  (
+    $debug && set -x
+    curl "${curl_authorization[@]}" \
+         "${curl_options_common[@]}" \
+         -X GET "$api/namespace/$encoded_path?children=true&labels=true" \
+    | jq -r \
+         --arg path "$path/" \
+         --arg regex "$regex" \
+         '.children[]
+          | {fileName: ($path + .fileName), matchingLabels: ([.labels[]? | select(test($regex))])}
+          | select(.matchingLabels | length > 0)
+          | [ .fileName, (.matchingLabels | join(",")) ]
+          | @tsv'
+  )
+  #
+  # If recursion was requested, we search for subdirs in $path, and do the same thing.
+  if $recursive ; then
+    for subdir in $(get_subdirs "$path") ; do
+      find_label "$path/$subdir" "$regex" "$recursive"
+    done
+  fi
+}
+
+
+find_xattr () {
+  local path
+  local attribute_name
+  local regex
+  local recursive
+  path="$1"
+  attribute_name="$2"
+  regex="$3"
+  recursive="$4"
+  encoded_path=$(urlencode "$path")
+  # We can only search dirs. Searching a file doesn't make sense, because we have found it.
+  if [[ $(pathtype "$path") == "REGULAR" ]] ; then
+    echo 1>&2 "ERROR: '$path' is a file. Please specify a directory."
+    exit 1
+  fi
+  # We search for files in this dir with a label that matches the regex.
+  if [[ $attribute_name == '--all' ]] ; then
+    (
+      $debug && set -x
+      curl "${curl_authorization[@]}" \
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$encoded_path?children=true&xattr=true" \
+      | jq -r \
+           --arg  path "$path/" \
+           --arg  regex "$regex" \
+           '
+             .children[]
+             | select(.extendedAttributes | to_entries | any(.value | test($regex)))
+             | [
+                 ($path + .fileName),
+                 (.extendedAttributes | to_entries | map(select(.value | test($regex)) | "\(.key)=\(.value)") | join(", "))
+               ]
+             | @tsv
+           '
+    )
+  else
+    # Searching for a value of a specific attribute
+    (
+      $debug && set -x
+      curl "${curl_authorization[@]}" \
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$encoded_path?children=true&xattr=true" \
+      | jq -r \
+           --arg attr_name "$attribute_name" \
+           --arg path "$path/" \
+           --arg regex "$regex" \
+           '
+             .children[]
+             | select(
+                 .extendedAttributes[$attr_name] != null
+                 and (.extendedAttributes[$attr_name] | type == "string")
+                 and (.extendedAttributes[$attr_name] | test($regex))
+               )
+             | [
+                 ($path + .fileName),
+                 "\($attr_name)=\(.extendedAttributes[$attr_name])"
+               ]
+             | @tsv
+           '
+    )
+  fi
+  #
+  # If recursion was requested, we search for subdirs in $path, and do the same thing.
+  if $recursive ; then
+    for subdir in $(get_subdirs "$path") ; do
+      find_xattr "$path/$subdir" "$attribute_name" "$regex" "$recursive"
+    done
+  fi
+}
+
+
 get_confirmation () {
   prompt="$1"
   while true ; do
@@ -1001,10 +1233,10 @@ create_path () {
   (
     $debug && set -x   # If --debug is specified, show (only) curl command
     curl "${curl_authorization[@]}" \
-          "${curl_options_common[@]}" \
-          "${curl_options_post[@]}" \
-          -X POST "$api/namespace/$parent" \
-          -d "{\"action\":\"mkdir\",\"name\":\"$name\"}"
+         "${curl_options_common[@]}" \
+         "${curl_options_post[@]}" \
+         -X POST "$api/namespace/$parent" \
+         -d "{\"action\":\"mkdir\",\"name\":\"$name\"}"
   ) \
   | jq -r .status
 }
@@ -1512,6 +1744,53 @@ get_dcache_versions () {
 }
 
 
+to_json () {
+  # Analyze metadata and convert it to JSON so we can feed it to "set-xattr"
+  #
+  # This function handles key-value pair input with various delimiters.
+  # It will first detect which delimiter is being used (equal sign, comma or tab)
+  #
+  # Is it empty?
+  if [ -z "$1" ] ; then
+    echo "ERROR: Provided metadata is empty. Nothing to do."
+    exit 1
+  fi
+  # Is it JSON?
+  if echo "$1" | jq empty > /dev/null 2>&1 ; then
+    # It is already JSON. No need to convert! Just compact it to one line.
+    echo "$1" | jq --compact-output .
+    return 0
+  fi
+  # We need to know which is the delimiter of the input data.
+  # Each line must have such a delimiter, otherwise it can't be the right delimiter.
+  # Test: If we remove all lines containing the delimiter, is the result empty?
+  if ! echo "$1" | grep --silent -v '=' ; then
+    delimiter='='
+  elif ! echo "$1" | grep --silent -v $'\t' ; then
+    delimiter=$'\t'
+  elif ! echo "$1" | grep --silent -v ',' ; then
+    delimiter=','
+  else
+    echo "ERROR: unable to detect the format of the provided metadata."
+    exit 1
+  fi
+  echo "$1" | awk -F "$delimiter" '
+    {
+      # Split the line based on the delimiter
+      split($0, a, FS)
+      # Trim whitespace
+      gsub(/^[ \t]+|[ \t]+$/, "", a[1])
+      gsub(/^[ \t]+|[ \t]+$/, "", a[2])
+      # Remove surrounding quotes
+      gsub(/^["'"'"']|["'"'"']$/, "", a[1])
+      gsub(/^["'"'"']|["'"'"']$/, "", a[2])
+      # Print key-value pairs in JSON format
+      print "{ \"" a[1] "\": \"" a[2] "\" }"
+    }
+  ' | jq --slurp --compact-output add
+}
+
+
 
 #
 # Execute API call(s).
@@ -1553,7 +1832,7 @@ case $command in
         ;;
       REGULAR | LINK )
         # User asked listing of a regular file (not a dir).
-        # No addition data is needed, the pathtype function 
+        # No addition data is needed, the pathtype function
         # has already checked that the file exists;
         # So we only list the file name. Nothing more.
         echo "$path"
@@ -1679,7 +1958,7 @@ case $command in
         ;;
     esac
     ;;
-  setlabel | rmlabel )
+  setlabel | lslabel | rmlabel )
     case $(pathtype "$path") in
       DIR )
         echo 1>&2 "ERROR: target '$path' is a directory. dCache does not support labels on directories."
@@ -1691,21 +1970,161 @@ case $command in
                   "Ada will continue. But if this symlink point to a direcory, the result may be unexpected."
         ;;
     esac
+    encoded_path=$(urlencode "$path")
     case $command in
-      setlabel )  action='set-label' ;;
-      rmlabel  )  action='rm-label'  ;;
-      * )         echo 1>&2 "Unexpected label command '$command'." ; exit 1 ;;
+      setlabel )
+        (
+          $debug && set -x   # If --debug is specified, show (only) curl command
+          curl "${curl_authorization[@]}" \
+               "${curl_options_common[@]}" \
+               "${curl_options_post[@]}" \
+               -X POST "$api/namespace/$encoded_path" \
+               -d "{\"action\":\"set-label\",\"label\":\"$label\"}"
+        ) \
+        | jq -r .status
+        ;;
+      rmlabel  )
+        (
+          $debug && set -x   # If --debug is specified, show (only) curl command
+          curl "${curl_authorization[@]}" \
+               "${curl_options_common[@]}" \
+               "${curl_options_post[@]}" \
+               -X POST "$api/namespace/$encoded_path" \
+               -d "{\"action\":\"rm-label\",\"label\":\"$label\"}"
+        ) \
+        | jq -r .status
+        ;;
+      lslabel )
+        labels=$(
+                  $debug && set -x   # If --debug is specified, show (only) curl command
+                  curl "${curl_authorization[@]}" \
+                  "${curl_options_common[@]}" \
+                  "${curl_options_post[@]}" \
+                  -X GET "$api/namespace/$encoded_path?labels=true"
+                )
+        if [ -n "$label"  ] ; then
+          result=$(echo "$labels" \
+                   | jq -r 'if (.labels | index("'$label'")) then "'$label'" else null end'
+                  )
+          if [ "$result" == "null" ]; then
+              echo "ERROR: file '$path' does not have label '$label'."
+              exit 1
+          else
+              echo "$result"
+          fi
+        else
+          echo "$labels" | jq -r '.labels | sort | .[]'
+        fi
+        ;;
+      * )
+        echo 1>&2 "Unexpected label command '$command'."
+        exit 1
+        ;;
+    esac
+    ;;
+  findlabel )
+    find_label "$path" "$regex" "$recursive"
+    ;;
+  setxattr | lsxattr | rmxattr )
+    case $(pathtype "$path") in
+      DIR )
+        echo 1>&2 "ERROR: target '$path' is a directory." \
+                  "dCache does not support extended attributes on directories."
+        exit 1
+        ;;
+      LINK )
+        echo 1>&2 "WARNING: target '$path' is a symlink. A symlink can point to a file or a directory." \
+                  "dCache does not support extended attributes on directories." \
+                  "Ada will continue. But if this symlink point to a direcory," \
+                  "the result may be unexpected."
+        ;;
     esac
     encoded_path=$(urlencode "$path")
-    (
-      $debug && set -x   # If --debug is specified, show (only) curl command
-      curl "${curl_authorization[@]}" \
-           "${curl_options_common[@]}" \
-           "${curl_options_post[@]}" \
-           -X POST "$api/namespace/$encoded_path" \
-           -d "{\"action\":\"$action\",\"label\":\"$label\"}"
-    ) \
-    | jq -r .status
+    case $command in
+      setxattr )
+        attributes=$(cat $attr_file)
+        xattr_json=$(to_json "$attributes")
+        echo "$xattr_json"
+        (
+          $debug && set -x   # If --debug is specified, show (only) curl command
+          curl "${curl_authorization[@]}" \
+               "${curl_options_common[@]}" \
+               "${curl_options_post[@]}" \
+               -X POST "$api/namespace/$encoded_path" \
+               -d "{\"action\":\"set-xattr\",\"attributes\":$xattr_json}"
+        ) \
+        | jq -r .status
+        ;;
+      lsxattr )
+        attributes=$(
+                      $debug && set -x   # If --debug is specified, show (only) curl command
+                      curl "${curl_authorization[@]}" \
+                      "${curl_options_common[@]}" \
+                      "${curl_options_post[@]}" \
+                      -X GET "$api/namespace/$encoded_path?xattr=true"
+                    )
+        if [ -n "$attribute_name"  ] ; then
+          attribute_value=$(echo "$attributes" | jq ".extendedAttributes.$attribute_name")
+          if [ "$attribute_value" == "null" ]; then
+              echo "ERROR: file '$path' does not have attribute '$attribute_name'."
+              exit 1
+          else
+              echo "$attribute_value"
+          fi
+        else
+          echo "$attributes" | jq .extendedAttributes
+        fi
+        ;;
+      rmxattr  )
+        case $attribute_name in
+          --all )
+            # User wants to remove all attributes of this file. We ask the API for a list.
+            names_json=$(
+                          $debug && set -x   # If --debug is specified, show (only) curl command
+                          curl "${curl_authorization[@]}" \
+                          "${curl_options_common[@]}" \
+                          "${curl_options_post[@]}" \
+                          -X GET "$api/namespace/$encoded_path?xattr=true" \
+                          | jq --compact-output '.extendedAttributes | keys'
+                        )
+            if [ "$names_json" == "[]" ] ; then
+              echo "No attributes to remove."
+              exit 0
+            else
+              echo "Removing attributes: $names_json"
+            fi
+            ;;
+          --* )
+            echo 1>&2 "ERROR: unexpected argument '$attribute_name'."
+            exit 1
+            ;;
+          '' )
+            echo 1>&2 "ERROR: expected attribute names to remove, or --all."
+            exit 1
+            ;;
+          * )
+            # User specified which attribute(s) must be removed.
+            names_json=$(echo "$attribute_name"  | jq -R 'split(",")')
+            ;;
+        esac
+        (
+          $debug && set -x   # If --debug is specified, show (only) curl command
+          curl "${curl_authorization[@]}" \
+               "${curl_options_common[@]}" \
+               "${curl_options_post[@]}" \
+               -X POST "$api/namespace/$encoded_path" \
+               -d "{\"action\":\"rm-xattr\",\"names\":$names_json}"
+        ) \
+        | jq -r .status
+        ;;
+      * )
+        echo 1>&2 "Unexpected xattr command '$command'."
+        exit 1
+        ;;
+    esac
+    ;;
+  findxattr )
+    find_xattr "$path" "$attribute_name" "$regex" "$recursive"
     ;;
   checksum )
     while read -r path ; do
