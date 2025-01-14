@@ -448,7 +448,7 @@ while [ $# -gt 0 ] ; do
       ;;
     --findlabel )
       command='findlabel'
-      path="$2"
+      path=$(echo "$2" | sed 's:/*$::')
       regex="$3"
       shift ; shift ; shift
       ;;
