@@ -1014,12 +1014,26 @@ pathtype () {
   # REGULAR = file
   # LINK    = symbolic link
   # <empty> = something went wrong... no permission?
-  local path
-  path=$(urlencode "$1")
-  curl "${curl_authorization[@]}" \
-       "${curl_options_no_errors[@]}" \
-       -X GET "$api/namespace/$path" \
-  | jq -r .fileType
+  local result
+  encoded_path=$(urlencode "$1")
+  result=$(
+            $debug && set -x
+            curl "${curl_authorization[@]}" \
+                 -H 'accept: application/json' \
+                 --silent \
+                 -X GET "$api/namespace/$encoded_path"
+          )
+  valid=$(echo "$result" | jq 'has("fileType")')
+  if [[ $valid == 'true' ]] ; then
+    echo "$result" | jq -r .fileType
+  else
+    # Something went wrong. The result should contain an error message in JSON format.
+    {
+      echo "Error while getting information about '$path':"
+      echo "$result" | jq .
+    } 1>&2
+    exit 1
+  fi
 }
 
 
@@ -1338,10 +1352,12 @@ bulk_request() {
         expand=NONE
         ;;
       '' )
-        echo "Warning: could not determine object type of '$filepath'."
+        echo "ERROR: could not determine object type of '$filepath'." 1>&2
+        exit 1
         ;;
       * )
-        echo "Unknown object type '$type'. Please create an issue for this in Github."
+        echo "Unknown object type '$type'. Please create an issue for this in Github." 1>&2
+        exit 1
         ;;
     esac
   else
@@ -1839,10 +1855,12 @@ case $command in
         ;;
       '' )
         # The path may not exist, or we may not have permission to see it.
-        echo "Warning: could not determine object type for '$path'"
+        echo "ERROR: could not determine object type for '$path'" 1>&2
+        exit 1
         ;;
       * )
-        echo "Unknown object type '$type'. Please create an issue for this in Github."
+        echo "Unknown object type '$type'. Please create an issue for this in Github." 1>&2
+        exit 1
         ;;
     esac
     ;;
@@ -1888,10 +1906,12 @@ case $command in
           ;;
         '' )
           # The path may not exist, or we may not have permission to see it.
-          echo "Warning: could not determine object type for '$path'"
+          echo "ERROR: could not determine object type for '$path'" 1>&2
+          exit 1
           ;;
         * )
-          echo "Unknown object type '$type'. Please create an issue for this in Github."
+          echo "Unknown object type '$type'. Please create an issue for this in Github." 1>&2
+          exit 1
           ;;
       esac
     done <<<"$pathlist" \
@@ -1951,10 +1971,12 @@ case $command in
         ;;
       '' )
         # The path may not exist, or we may not have permission to see it.
-        echo "Warning: could not determine object type for '$path'"
+        echo "ERROR: could not determine object type for '$path'" 1>&2
+        exit 1
         ;;
       * )
-        echo "Unknown object type '$type'. Please create an issue for this in Github."
+        echo "ERROR: unknown object type '$type'. Please create an issue for this in Github."
+        exit 1
         ;;
     esac
     ;;
