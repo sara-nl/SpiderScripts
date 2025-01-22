@@ -631,7 +631,10 @@ check_token() {
     fi
 
     # Convert expiration time to epoch seconds
-    exp_epoch=$(date -d "$exp" +%s 2>/dev/null)
+    case $OSTYPE in
+      darwin* )  exp_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${exp:0:19}" +"%s" 2>/dev/null)  ;;
+            * )  exp_epoch=$(date -d "$exp" +%s 2>/dev/null)  ;;
+    esac
 
     if [ -z "$exp_epoch" ]; then
       echo 1>&2 "ERROR: invalid macaroon: unable to parse 'before' timestamp"
@@ -658,45 +661,6 @@ check_token() {
     return 0
   fi
 }
-
-
- check_macaroon () {
-  # Checks, if possible, whether a macaroon is still valid.
-  local macaroon="$1"
-  if [ -x "${script_dir}/view-macaroon" ] ; then
-    macaroon_viewer="${script_dir}/view-macaroon"
-  else
-    macaroon_viewer="$(command -v view-macaroon)"
-  fi
-  if [ -x "$macaroon_viewer" ] ; then
-    $debug && echo "Macaroon viewer: $macaroon_viewer"
-    endtime=$(
-      $macaroon_viewer <<<"$macaroon" \
-      | sed -n 's/cid before:// p'
-    )
-    if [ -n "$endtime" ] ; then
-      case $OSTYPE in
-        darwin* )  endtime_unix=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${endtime:0:19}" +"%s")  ;;
-        * )        endtime_unix=$(date --date "$endtime" +%s)  ;;
-      esac
-      now_unix=$(date +%s)
-      if [ "$now_unix" -gt "$endtime_unix" ] ; then
-        echo 1>&2 "ERROR: Macaroon is invalid: it expired on $endtime."
-        return 1
-      else
-        $debug && echo "Macaroon has not expired yet."
-      fi
-    else
-      $debug && echo "Could not get token endtime. It may not be a macaroon."
-    fi
-  else
-    $debug && echo "No view-macaroon found; unable to check macaroon."
-  fi
-  return 0
-}
-
-
-
 
 
 #
@@ -1448,7 +1412,7 @@ validate_input() {
         echo 1>&2 "ERROR: no tokenfile, nor variable BEARER_TOKEN specified."
         exit 1
       fi
-      check_macaroon "$token" || exit 1
+      check_token "$token" || exit 1
       ;;
     netrc )
       if [ ! -f "$netrcfile" ] ; then
