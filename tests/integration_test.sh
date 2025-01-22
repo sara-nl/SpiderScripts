@@ -4,7 +4,7 @@
 
 test_ada_version() {
     result=`ada/ada --version`
-    assertEquals "Check ada version:" "v2.1" ${result}
+    assertEquals "Check ada version:" "v2.2" ${result}
 }
 
 

@@ -309,11 +309,11 @@ get_args() {
         _VERSION_PLACEHOLDER=$(git --git-dir=${git_dir}/.git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
         echo "${_VERSION_PLACEHOLDER}"
         exit 1
-      ;;
+        ;;
       --tokenfile )
         auth_method=token
         tokenfile="$2"
-      token_debug_info="Token source: --tokenfile $tokenfile"
+        token_debug_info="Token source: --tokenfile $tokenfile"
         shift ; shift
         ;;
       --netrc )
@@ -352,10 +352,10 @@ get_args() {
         ;;
       --whoami )
         command='whoami'
-      shift
-      ;;
-    --viewtoken )
-      command='viewtoken'
+        shift
+        ;;
+      --viewtoken )
+        command='viewtoken'
         shift
         ;;
       --list )
@@ -471,8 +471,8 @@ get_args() {
         arg="$2"
         lifetime=${arg::${#arg} -1}
         lifetime_unit=${arg: ${#arg}-1}
-      shift ; shift
-      ;;
+        shift ; shift
+        ;;
       --timeout )
         channel_timeout="$2"
         shift ; shift
@@ -518,6 +518,10 @@ get_args() {
 }
 # End get_args()
 
+
+#
+# Define internal functions ada needs 
+#
 
 
 view_token() {
@@ -656,6 +660,44 @@ check_token() {
 }
 
 
+ check_macaroon () {
+  # Checks, if possible, whether a macaroon is still valid.
+  local macaroon="$1"
+  if [ -x "${script_dir}/view-macaroon" ] ; then
+    macaroon_viewer="${script_dir}/view-macaroon"
+  else
+    macaroon_viewer="$(command -v view-macaroon)"
+  fi
+  if [ -x "$macaroon_viewer" ] ; then
+    $debug && echo "Macaroon viewer: $macaroon_viewer"
+    endtime=$(
+      $macaroon_viewer <<<"$macaroon" \
+      | sed -n 's/cid before:// p'
+    )
+    if [ -n "$endtime" ] ; then
+      case $OSTYPE in
+        darwin* )  endtime_unix=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${endtime:0:19}" +"%s")  ;;
+        * )        endtime_unix=$(date --date "$endtime" +%s)  ;;
+      esac
+      now_unix=$(date +%s)
+      if [ "$now_unix" -gt "$endtime_unix" ] ; then
+        echo 1>&2 "ERROR: Macaroon is invalid: it expired on $endtime."
+        return 1
+      else
+        $debug && echo "Macaroon has not expired yet."
+      fi
+    else
+      $debug && echo "Could not get token endtime. It may not be a macaroon."
+    fi
+  else
+    $debug && echo "No view-macaroon found; unable to check macaroon."
+  fi
+  return 0
+}
+
+
+
+
 
 #
 # Set up dir for settings, channel state info, curl authentication headers, and request logfile
@@ -669,10 +711,6 @@ setup_dirs () {
   chmod -R u=rwX,g=,o= "$ada_dir"
 }
 
-
-#
-# Define functions we need.
-#
 
 urlencode () {
   # We use jq for encoding the URL, because we need jq anyway.
@@ -786,7 +824,7 @@ get_confirmation () {
   while true ; do
     # We read the answer from tty, otherwise strange things would happen.
     read -r -p "$prompt (N/y) " -n1 answer < /dev/tty
-    echo
+    # echo
     case $answer in
       Y | y )       return 0  ;;
       N | n | '' )  return 1  ;;
@@ -1410,7 +1448,7 @@ validate_input() {
         echo 1>&2 "ERROR: no tokenfile, nor variable BEARER_TOKEN specified."
         exit 1
       fi
-      check_token "$token" || exit 1
+      check_macaroon "$token" || exit 1
       ;;
     netrc )
       if [ ! -f "$netrcfile" ] ; then
@@ -1759,7 +1797,7 @@ api_call () {
         stage   )  activity='PIN'     ;;
         unstage )  activity='UNPIN'   ;;
       esac
-      bulk_request "$activity" "$pathlist" "$recursive" | column -t -s $'\t'
+      bulk_request "$activity" "$pathlist" "$recursive"
       ;;
     events | report-staged )
       if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
