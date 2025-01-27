@@ -37,6 +37,42 @@ test_ada_list_file() {
 }
 
 
+test_ada_setlabel() {
+    ada/ada --tokenfile ${token_file} --setlabel "/${disk_path}/${dirname}/${testdir}/${testfile}" "testlabel" --api ${api} >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    result=`cat "${stdoutF}"`
+    assertEquals "success" "$result"
+}
+
+
+test_ada_findlabel() {
+    ada/ada --tokenfile ${token_file} --findlabel "/${disk_path}/${dirname}/${testdir}" "testlabel" --api ${api} >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    grep "${testfile}" "${stdoutF}" >/dev/null
+    assertTrue "ada could not find file with findlabel" $?
+}
+
+
+test_ada_lslabel() {
+    ada/ada --tokenfile ${token_file} --lslabel "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    result=`cat "${stdoutF}"`
+    assertEquals "testlabel" "$result"
+}
+
+
+test_ada_rmlabel() {
+    ada/ada --tokenfile ${token_file} --rmlabel "/${disk_path}/${dirname}/${testdir}/${testfile}" "testlabel" --api ${api} >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    result=`cat "${stdoutF}"`
+    assertEquals "success" "$result"
+}
+
+
 test_ada_checksum_file() {
     ada/ada --tokenfile ${token_file} --checksum "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
