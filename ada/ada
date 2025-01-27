@@ -796,23 +796,26 @@ pathtype () {
   # <empty> = something went wrong... no permission?
   local result
   encoded_path=$(urlencode "$1")
-  result=$(
-            $debug && set -x
-            curl "${curl_authorization[@]}" \
-                 -H 'accept: application/json' \
-                 --silent \
-                 -X GET "$api/namespace/$encoded_path"
-          )
-  valid=$(echo "$result" | jq 'has("fileType")')
-  if [[ $valid == 'true' ]] ; then
-    echo "$result" | jq -r .fileType
+  command='$debug && set -x
+          curl "${curl_authorization[@]}" \
+          -H "accept: application/json" \
+          --silent \
+          -X GET "$api/namespace/$encoded_path"'
+  if $dry_run ; then
+    echo "$command"
   else
-    # Something went wrong. The result should contain an error message in JSON format.
-    {
-      echo "Error while getting information about '$path':"
-      echo "$result" | jq .
-    } 1>&2
-    exit 1
+    result=$(eval "$command")
+    valid=$(echo "$result" | jq 'has("fileType")')
+    if [[ $valid == 'true' ]] ; then
+      echo "$result" | jq -r .fileType
+    else
+      # Something went wrong. The result should contain an error message in JSON format.
+      {
+        echo "Error while getting information about '$path':"
+        echo "$result" | jq .
+      } 1>&2
+      exit 1
+    fi
   fi
 }
 
