@@ -13,10 +13,11 @@ test_urlencode() {
 
 test_pathtype() {
   result=`pathtype "/test/a/b/c"`
-  expected='curl "${curl_authorization[@]}" \
-       "${curl_options_no_errors[@]}" \
-       -X GET "$api/namespace/$path" \
-  | jq -r .fileType'
+  expected='$debug && set -x
+          curl "${curl_authorization[@]}" \
+          -H "accept: application/json" \
+          --silent \
+          -X GET "$api/namespace/$encoded_path"'
   assertEquals \
       "the result of pathtype() was wrong" \
       "${expected}" "${result}"
