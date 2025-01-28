@@ -2099,7 +2099,7 @@ api_call () {
       encoded_path=$(urlencode "$path")
       case $command in
         setxattr )
-          attributes=$(cat $attr_file)
+          attributes=$(cat $xattr_file)
           xattr_json=$(to_json "$attributes")
           echo "$xattr_json"
           (
