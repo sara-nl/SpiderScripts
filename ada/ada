@@ -468,7 +468,7 @@ get_args() {
           --* | '' )
             # Next argument is another option or absent; not a file name.
             # We will read attributes from stdin.
-            echo "No file with attributes specified. Will read attributes from stdin."
+            echo "No file containing attributes specified. Will read attributes from stdin. Terminate with ctrl+d."
             xattr_file='/dev/stdin'
             ;;
           - )
