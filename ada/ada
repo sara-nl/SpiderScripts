@@ -2100,7 +2100,10 @@ api_call () {
       case $command in
         setxattr )
           attributes=$(cat $xattr_file)
-          xattr_json=$(to_json "$attributes")
+          xattr_json=$(to_json "$attributes") || {
+            echo "ERROR: invalid attributes provided." 1>&2
+            exit 1
+          }
           echo "$xattr_json"
           (
             $debug && set -x   # If --debug is specified, show (only) curl command
