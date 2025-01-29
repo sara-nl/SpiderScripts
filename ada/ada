@@ -652,7 +652,7 @@ view_token() {
     echo "$payload" | jq '. | .exp |= todate | .nbf |= todate | .iat |= todate'
   else
     # Not an OIDC token; probably a Macaroon
-    macaroon_decoded=$(echo "$token" | base64 -d 2>/dev/null | awk '{print substr($0, 5)}' 2>/dev/null)
+    macaroon_decoded=$(echo "$token" | base64 -d 2>/dev/null | awk '{print substr($0, 5)}' 2>/dev/null | tr -d '\0')
 
     # Check if decoding succeeded
     if [ -z "$macaroon_decoded" ]; then
@@ -716,7 +716,7 @@ check_token() {
     # Macaroon Token (assume it's base64 encoded)
     $debug && echo "Checking Macaroon token..."
 
-    macaroon_decoded=$(echo "$token" | base64 -d 2>/dev/null | awk '{print substr($0, 5)}' 2>/dev/null)
+    macaroon_decoded=$(echo "$token" | base64 -d 2>/dev/null | awk '{print substr($0, 5)}' 2>/dev/null | tr -d '\0')
 
     # Check if decoding succeeded
     if [ -z "$macaroon_decoded" ]; then
