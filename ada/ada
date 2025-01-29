@@ -2160,8 +2160,9 @@ api_call () {
               exit 1
               ;;
             * )
-              # User specified which attribute(s) must be removed.
-              names_json=$(echo "$attribute_name"  | jq -R 'split(",")')
+              # User specified which attribute must be removed.
+              # dCache expects a list, but Ada supports only a single item at a time (or --all).
+              names_json=$(jq -n --compact-output --arg name "$attribute_name" '[$name]')
               ;;
           esac
           (
