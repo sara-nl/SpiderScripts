@@ -1572,8 +1572,8 @@ to_json () {
   #
   # Is it empty?
   if [ -z "$1" ] ; then
-    echo "ERROR: Provided metadata is empty. Nothing to do."
-    exit 1
+    echo 1>&2 "ERROR: Provided metadata is empty. Nothing to do."
+    return 1
   fi
   # Is it JSON?
   if echo "$1" | jq empty > /dev/null 2>&1 ; then
@@ -1591,8 +1591,8 @@ to_json () {
   elif ! echo "$1" | grep --silent -v ',' ; then
     delimiter=','
   else
-    echo "ERROR: unable to detect the format of the provided metadata."
-    exit 1
+    echo 1>&2 "ERROR: unable to detect the format of the provided metadata."
+    return 1
   fi
   echo "$1" | awk -F "$delimiter" '
     {
@@ -2100,10 +2100,7 @@ api_call () {
       case $command in
         setxattr )
           attributes=$(cat $xattr_file)
-          xattr_json=$(to_json "$attributes") || {
-            echo "ERROR: invalid attributes provided." 1>&2
-            exit 1
-          }
+          xattr_json=$(to_json "$attributes") || exit 1
           echo "$xattr_json"
           (
             $debug && set -x   # If --debug is specified, show (only) curl command
