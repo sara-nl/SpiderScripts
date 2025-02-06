@@ -1973,7 +1973,9 @@ api_call () {
     mv )
       # dCache may overwrite an empty directory.
       # If target already exists, quit.
-      case $(pathtype "$destination") in
+      # Function pathtype() produces an error message if the target
+      # does not exist, but we don't care, so we throw it away.
+      case $(pathtype "$destination" 2> /dev/null) in
         DIR | REGULAR | LINK )
           echo 1>&2 "ERROR: target '$destination' already exists."
           exit 1
