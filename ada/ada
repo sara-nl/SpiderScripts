@@ -1731,8 +1731,28 @@ validate_input() {
             exit 1
           fi
           ;;
-        setlabel | rmlabel )
-          if [[ -z $label || $label =~ ^-- ]] ; then
+        setlabel )
+          # Next argument is empty, but we need a label
+          if [[ -z $label ]] ; then
+            echo 1>&2 "ERROR: command $command requires a label."
+            exit 1
+          fi
+          # If you accidentally '--setlabel --all', you might end up with a label
+          # '--all' that is difficult to remove without throwing all labels away.
+          if [[ $label == '--all' ]] ; then
+            echo 1>&2 "ERROR: you specified '--all' with command $command;" \
+                      "did you want to do '--rmlabel --all'?"
+            exit 1
+          fi
+          ;;
+        rmlabel )
+          # Next argument is empty, but we need a label
+          if [[ -z $label ]] ; then
+            echo 1>&2 "ERROR: command $command requires a label."
+            exit 1
+          fi
+          # Next argument is another option but not '--all'
+          if [[ $label =~ ^-- &&  $label != '--all' ]] ; then
             echo 1>&2 "ERROR: command $command requires a label."
             exit 1
           fi
@@ -2041,15 +2061,42 @@ api_call () {
           | jq -r .status
           ;;
         rmlabel  )
-          (
-            $debug && set -x   # If --debug is specified, show (only) curl command
-            curl "${curl_authorization[@]}" \
-                 "${curl_options_common[@]}" \
-                 "${curl_options_post[@]}" \
-                 -X POST "$api/namespace/$encoded_path" \
-                 -d "{\"action\":\"rm-label\",\"label\":\"$label\"}"
-          ) \
-          | jq -r .status
+          case $label in
+            --all )
+              # User wants to remove all labels of this file.
+              # The API does not support this, but We ask the API for the list of labels
+              # and then remove each of them with a separate API call.
+              labels=$(
+                        $debug && set -x   # If --debug is specified, show curl & jq command
+                        curl "${curl_authorization[@]}" \
+                        "${curl_options_common[@]}" \
+                        "${curl_options_post[@]}" \
+                        -X GET "$api/namespace/$encoded_path?labels=true" \
+                        | jq -r '.labels[]'
+                      )
+              if [ "$labels" == "" ] ; then
+                echo "No labels to remove."
+                exit 0
+              else
+                echo "Removing labels: $(echo "$labels" | tr '\n' ' ')"
+              fi
+              ;;
+            * )
+              # User specified only a single label.
+              labels="$label"
+              ;;
+          esac
+          for label in $labels ; do
+            (
+              $debug && set -x   # If --debug is specified, show curl & jq command
+              curl "${curl_authorization[@]}" \
+                   "${curl_options_common[@]}" \
+                   "${curl_options_post[@]}" \
+                   -X POST "$api/namespace/$encoded_path" \
+                   -d "{\"action\":\"rm-label\",\"label\":\"$label\"}" \
+              | jq -r .status
+            )
+          done
           ;;
         lslabel )
           labels=$(
