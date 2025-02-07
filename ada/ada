@@ -2064,8 +2064,9 @@ api_call () {
           case $label in
             --all )
               # User wants to remove all labels of this file.
-              # The API does not support this, but We ask the API for the list of labels
-              # and then remove each of them with a separate API call.
+              # The API does not support this in a single operation.
+              # So first we ask the API for the list of labels and then
+              # we remove each of them with a separate API call.
               labels=$(
                         $debug && set -x   # If --debug is specified, show curl & jq command
                         curl "${curl_authorization[@]}" \
