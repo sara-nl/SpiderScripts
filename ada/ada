@@ -43,7 +43,15 @@ usage() {
 	      The dCache API URL to talk to.
 
 	  --debug
-	      Show what's going on.
+	      Show what's going on. Includes all API calls that Ada makes.
+
+	  --igtf true|false
+	      Indicates whether the API uses an IGTF compatible certificate,
+	      also called a "Grid" certificate.
+	      If not specified, IGTF certificates are assumed ('true'), which
+	      is probably the best for most dCache sites.
+	      Set this to false if the dCache API you talk to, has a "normal"
+	      certificate like a "Let's Encrypt" cert.
 
 	Authentication options:
 
@@ -62,9 +70,10 @@ usage() {
 	      Authenticate with a Grid proxy.
 	      If no filename was provided, use \$X509_USER_PROXY.
 
-    If no authentication method is specified, \$BEARER_TOKEN is used if it exists.
+	    If no authentication method is specified, \$BEARER_TOKEN is used if it exists.
 
 	Commands:
+
 	  --help
 	      Show this helptext.
 
@@ -221,6 +230,7 @@ usage() {
 	    ada_api             => --api
 	    ada_debug           => --debug
 	    ada_channel_timeout => --timeout
+	    ada_igtf            => --igtf
 	    X509_USER_PROXY
 	    X509_CERT_DIR
 
@@ -255,6 +265,7 @@ set_defaults() {
   channel_timeout=3600
   auth_method=
   certdir=${X509_CERT_DIR:-/etc/grid-security/certificates}
+  igtf=true
   lifetime=7
   lifetime_unit=D
   from_file=false
@@ -303,6 +314,9 @@ set_defaults() {
   fi
   if [ -n "$ada_api" ] ; then
     api="$ada_api"
+  fi
+  if [ -n "$ada_igtf" ] ; then
+    igtf="$ada_igtf"
   fi
   if [ -n "$ada_netrcfile" ] ; then
     netrcfile="$ada_netrcfile"
@@ -610,13 +624,32 @@ get_args() {
         esac
         shift
         ;;
+      --igtf )
+        # This option requires either 'true' or 'false' as value.
+        # Any other value is an error.
+        if [[ $2 == 'true' || $2 == 'false' ]] ; then
+          igtf="$2"
+          shift
+        else
+          # Why throw an error now, and not relying on the validation phase?
+          # This makes it easier to give a very clear error message.
+          # Otherwise, it might lead to errors like these:
+          #    "'--nextoption' is not a valid value for option --igtf"
+          # or even worse:
+          #    "'nextoptions-value' is not a valid command"
+          echo 1>&2 "ERROR: option --igtf requires either 'true' or 'false' as a value."
+          exit 1
+        fi
+        shift
+        ;;
       --debug )
         debug=true
         shift
         ;;
-      *)
-        echo 1>&2 "ERROR: unknown option '$1'."
-        usage
+      * )
+        echo 1>&2 "ERROR: unknown option '$1'." \
+                  "Use '$0 --help' for more information."
+        exit 1
         ;;
     esac
   done
@@ -1660,6 +1693,14 @@ validate_input() {
     echo 1>&2 "WARNING: the API address ($api) should start with 'https://' and end with '/api/v1'."
   fi
 
+  # Command line option --igtf is already validated,
+  # but it may have been provided as a configuration setting,
+  # so we need to check again.
+  if [[ $igtf != 'true' && $igtf != 'false' ]] ; then
+    echo 1>&2 "ERROR: option igtf requires either 'true' or 'false' as a value."
+    exit 1
+  fi
+
   case $auth_method in
     token )
       if [ -n "$tokenfile" ] ; then
@@ -1834,9 +1875,14 @@ construct_auth() {
       curl_authorization=( "--netrc-file" "$netrcfile" )
       ;;
     proxy )
-      curl_authorization=( --capath "$certdir"
-                          --cert   "$proxyfile"
-                          --cacert "$proxyfile" )
+      if $igtf ; then
+        curl_authorization=( --capath "$certdir"
+                             --cert   "$proxyfile"
+                             --cacert "$proxyfile" )
+      else
+        curl_authorization=( --cert   "$proxyfile"
+                             --cacert "$proxyfile" )
+      fi
       ;;
   esac
 }
