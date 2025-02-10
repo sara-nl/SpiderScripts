@@ -36,7 +36,7 @@ test_ada_mv1() {
 
 # List file
 test_ada_list_file() {
-    command="ada/ada --tokenfile ${token_file} --list /${disk_path}/${dirname}/${testdir}/${testfile}"
+    command="ada/ada --tokenfile ${token_file} --list /${disk_path}/${dirname}/${testdir}/${testfile} --api ${api}"
     echo "Running command:"
     echo $command
     eval $command >${stdoutF} 2>${stderrF}
