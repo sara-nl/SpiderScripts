@@ -10,7 +10,10 @@ test_ada_version() {
 
 # Create directory on dCache
 test_ada_mkdir() {
-    ada/ada --tokenfile ${token_file} --mkdir "/${disk_path}/${dirname}/${testdir}/${subdir}" --recursive --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --mkdir /${disk_path}/${dirname}/${testdir}/${subdir} --recursive --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
@@ -21,8 +24,10 @@ test_ada_mkdir() {
 
 # Move a file (created in oneTimeSetUp) to folder created in above test
 test_ada_mv1() {
-    echo "ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${testfile}" "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api}"
-    ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${testfile}" "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --mv /${disk_path}/${dirname}/${testfile} /${disk_path}/${dirname}/${testdir}/${testfile} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
@@ -31,7 +36,10 @@ test_ada_mv1() {
 
 # List file
 test_ada_list_file() {
-    ada/ada --tokenfile ${token_file} --list "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --list /${disk_path}/${dirname}/${testdir}/${testfile}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     result=`cat "${stdoutF}"`
@@ -40,7 +48,10 @@ test_ada_list_file() {
 
 # Set label on a file
 test_ada_setlabel() {
-    ada/ada --tokenfile ${token_file} --setlabel "/${disk_path}/${dirname}/${testdir}/${testfile}" "testlabel" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --setlabel /${disk_path}/${dirname}/${testdir}/${testfile} testlabel --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     result=`cat "${stdoutF}"`
@@ -49,7 +60,10 @@ test_ada_setlabel() {
 
 # Find files in directory with specified label
 test_ada_findlabel() {
-    ada/ada --tokenfile ${token_file} --findlabel "/${disk_path}/${dirname}/${testdir}" "testlabel" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --findlabel /${disk_path}/${dirname}/${testdir} testlabel --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "${testfile}" "${stdoutF}" >/dev/null
@@ -58,17 +72,22 @@ test_ada_findlabel() {
 
 # List label of file
 test_ada_lslabel() {
-    ada/ada --tokenfile ${token_file} --lslabel "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --lslabel /${disk_path}/${dirname}/${testdir}/${testfile} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     result=`cat "${stdoutF}"`
     assertEquals "testlabel" "$result"
 }
 
-
 # Remove label of file
 test_ada_rmlabel() {
-    ada/ada --tokenfile ${token_file} --rmlabel "/${disk_path}/${dirname}/${testdir}/${testfile}" "testlabel" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --rmlabel "/${disk_path}/${dirname}/${testdir}/${testfile}" "testlabel" --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     result=`cat "${stdoutF}"`
@@ -77,8 +96,11 @@ test_ada_rmlabel() {
 
 # Set extended attribute of file
 test_ada_setxattr() {
+    command="ada/ada --tokenfile ${token_file} --setxattr /${disk_path}/${dirname}/${testdir}/${testfile} ${outputDir}/attr_file --api ${api}"
     echo "test=attribute" > ${outputDir}/attr_file
-    ada/ada --tokenfile ${token_file} --setxattr "/${disk_path}/${dirname}/${testdir}/${testfile}" ${outputDir}/attr_file --api ${api} >${stdoutF} 2>${stderrF}
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
@@ -87,7 +109,10 @@ test_ada_setxattr() {
 
 # List extended attribute of file
 test_ada_lsxattr() {
-    ada/ada --tokenfile ${token_file} --lsxattr "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --lsxattr /${disk_path}/${dirname}/${testdir}/${testfile} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep '"test": "attribute"' "${stdoutF}" >/dev/null
@@ -96,7 +121,10 @@ test_ada_lsxattr() {
 
 # Find file with attribute with key-value pair
 test_ada_findxattr() {
-    ada/ada --tokenfile ${token_file} --findxattr "/${disk_path}/${dirname}/${testdir}" "test" "attribute" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --findxattr /${disk_path}/${dirname}/${testdir} test attribute --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "${testfile}" "${stdoutF}" >/dev/null
@@ -105,7 +133,10 @@ test_ada_findxattr() {
 
 # Remove all attributes of file
 test_ada_rmxattr() {
-    ada/ada --tokenfile ${token_file} --rmxattr "/${disk_path}/${dirname}/${testdir}/${testfile}" --all --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --rmxattr /${disk_path}/${dirname}/${testdir}/${testfile} --all --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
@@ -117,7 +148,10 @@ test_ada_rmxattr() {
 
 # Get checksum of file
 test_ada_checksum_file() {
-    ada/ada --tokenfile ${token_file} --checksum "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --checksum /${disk_path}/${dirname}/${testdir}/${testfile} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "${testfile}" "${stdoutF}" >/dev/null
@@ -126,7 +160,10 @@ test_ada_checksum_file() {
 
 # Get checksum of files in a directory
 test_ada_checksum_dir() {
-    ada/ada --tokenfile ${token_file} --checksum "/${disk_path}/${dirname}/${testdir}" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --checksum /${disk_path}/${dirname}/${testdir} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "${testfile}" "${stdoutF}" >/dev/null
@@ -135,7 +172,10 @@ test_ada_checksum_dir() {
 
 # List files in directory
 test_ada_list_dir() {
-    ada/ada --tokenfile ${token_file} --list "/${disk_path}/${dirname}/${testdir}" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --list /${disk_path}/${dirname}/${testdir} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "${testfile}" "${stdoutF}" >/dev/null
@@ -144,17 +184,22 @@ test_ada_list_dir() {
 
 # List files in directory with details
 test_ada_longlist() {
-    ada/ada --tokenfile ${token_file} --longlist "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --longlist /${disk_path}/${dirname}/${testdir}/${testfile} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "${testfile}" "${stdoutF}" >/dev/null
     assertTrue "ada could not longlist the correct file" $?
 }
 
-
 # Show all details of file or directory
 test_ada_stat() {
-    ada/ada --tokenfile ${token_file} --stat "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --stat /${disk_path}/${dirname}/${testdir}/${testfile} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "${testfile}" "${stdoutF}" >/dev/null
@@ -164,7 +209,10 @@ test_ada_stat() {
 
 # Move file back to original folder
 test_ada_mv2() {
-    ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${testdir}/${testfile}" "/${disk_path}/${dirname}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --mv /${disk_path}/${dirname}/${testdir}/${testfile} /${disk_path}/${dirname}/${testfile} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
@@ -173,7 +221,10 @@ test_ada_mv2() {
 
 # Delete test directory
 test_ada_delete() {
-    ada/ada --tokenfile ${token_file} --delete "/${disk_path}/${dirname}/${testdir}" --recursive --api ${api} --force >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --delete /${disk_path}/${dirname}/${testdir} --recursive --api ${api} --force"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
@@ -182,7 +233,10 @@ test_ada_delete() {
 
 # Stage a file
 test_ada_stage_file() {
-    ada/ada --tokenfile ${token_file} --stage "/${tape_path}/${dirname}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --stage /${tape_path}/${dirname}/${testfile} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
@@ -194,7 +248,10 @@ test_ada_stage_file() {
 
 # Unstage a file
 test_ada_unstage_file() {
-    ada/ada --tokenfile ${token_file} --unstage "/${tape_path}/${dirname}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --unstage /${tape_path}/${dirname}/${testfile} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
@@ -206,8 +263,11 @@ test_ada_unstage_file() {
 
 # Stages files in file_list
 test_ada_stage_filelist() {
+    command="ada/ada --tokenfile ${token_file} --stage --from-file ${outputDir}/file_list  --api ${api}"
     echo  "/${tape_path}/${dirname}/${testfile}" > ${outputDir}/file_list
-    ada/ada --tokenfile ${token_file} --stage --from-file ${outputDir}/file_list  --api ${api} >${stdoutF} 2>${stderrF}
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
@@ -219,7 +279,10 @@ test_ada_stage_filelist() {
 
 # Unstage files in file_list
 test_ada_unstage_filelist() {
-    ada/ada --tokenfile ${token_file} --unstage --from-file ${outputDir}/file_list --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --unstage --from-file ${outputDir}/file_list --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
@@ -231,7 +294,10 @@ test_ada_unstage_filelist() {
 
 # Test if ada exits with error when staging non-existing file
 test_ada_stage_file_error() {
-    ada/ada --tokenfile ${token_file} --stage "/${tape_path}/${dirname}/testerror" --api ${api} >${stdoutF} 2>${stderrF}
+    command="ada/ada --tokenfile ${token_file} --stage /${tape_path}/${dirname}/testerror --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 1 ${result}
 }
