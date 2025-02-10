@@ -18,7 +18,7 @@ brew install rclone
 ```
 There are also optional dependencies to run tests and create macaroons:
 ```
-brew install shunit2 (or get from https://github.com/kward/shunit2)
+brew install shunit2 (or "wget https://raw.githubusercontent.com/kward/shunit2/refs/heads/master/shunit2")
 pip install pymacaroons
 wget https://raw.githubusercontent.com/sara-nl/GridScripts/master/view-macaroon -P ada
 wget https://raw.githubusercontent.com/sara-nl/GridScripts/master/get-macaroon -P ada

@@ -21,6 +21,7 @@ test_ada_mkdir() {
 
 # Move a file (created in oneTimeSetUp) to folder created in above test
 test_ada_mv1() {
+    echo "ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${testfile}" "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api}"
     ada/ada --tokenfile ${token_file} --mv "/${disk_path}/${dirname}/${testfile}" "/${disk_path}/${dirname}/${testdir}/${testfile}" --api ${api} >${stdoutF} 2>${stderrF}
     result=$?
     assertEquals "ada returned error code ${result}" 0 ${result} || return
@@ -296,7 +297,7 @@ oneTimeSetUp() {
         ;;
     esac
     rclone -P copyto --config=${token_file} ${PWD}/$testfile  $(basename "${token_file%.*}"):/${tape_path}/${dirname}/${testfile} 
-
+    rclone -P copyto --config=${token_file} ${PWD}/$testfile  $(basename "${token_file%.*}"):/${disk_path}/${dirname}/${testfile} 
 }
 
 
