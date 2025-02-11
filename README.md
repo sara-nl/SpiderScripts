@@ -1,21 +1,49 @@
 # SpiderScripts
-Welcome! These are a few scripts that we use at SURF to work with [Spider](https://doc.spider.surfsara.nl/en/latest/Pages/about.html).
 
-## ADA
-ADA stands for "Advanced dCache API". It is a client that talks to the dCache storage system API to get all kinds of information like directory listings and file checksums, and to do things like renaming, moving, deleting, staging (restoring from tape), and subscribing to server-sent-events so that you can automate actions when new files are written or files are staged. ADA does not transfer files; we suggest you use [Rclone](https://rclone.org/) for that.
+Welcome! These are a few scripts that we use at SURF to work with the [Spider compute cluster](https://doc.spider.surfsara.nl/en/latest/Pages/about.html).
+
+## ADA - Advanced dCache API
+
+### About ADA
+
+ADA is a client that talks to the [dCache storage system](https://dcache.org/) [API](https://www.dcache.org/manuals/UserGuide-10.2/frontend.shtml) to work with data in dCache.
+
+#### Features
+
+* List directory and file information
+* List file checksums
+* Rename, move and delete files and directories
+* Work with labels on files: set labels, remove them, and search directories for files with labels
+* Work with file metadata (extended attributes): set attributes, delete them, and search directories for files with certain attributes
+* Stage files (restore from tape), check whether they are online or not
+* Show available space in dCache
+* Subscribe to server-sent-events to set up automated workflows
+
+Many of these operations can be done recursively. For authentication, ADA supports X509, tokens (macaroons and OIDC) and basic auth (username/password), depending on the dCache configuration. 
+
+#### Limitations
+
+* ADA does not transfer files; we suggest you use [Rclone](https://rclone.org/) for that.
+* ADA depends on dCache. The dCache system you work with may have limitations that impact ADA.
 
 ### Installation
-ADA is pre-installed and ready to use on Spider. If you want to use ADA elsewhere, you can clone this repository:
+
+ADA has been tested on Linux and MacOS. It is pre-installed and ready to use on the Spider compute cluster. If you want to use ADA elsewhere, you can clone this repository:
 
 ```
 git clone https://github.com/sara-nl/SpiderScripts.git
 cd SpiderScripts
 ```
+
 Install dependencies (if not already installed on your system):
 ```
-brew install jq
-brew install rclone
+# MacOS
+brew install jq rclone bash
+
+# Redhat/Rocky/Alma
+dnf install jq rclone
 ```
+
 There are also optional dependencies to run tests and create macaroons:
 ```
 brew install shunit2 (or "wget https://raw.githubusercontent.com/kward/shunit2/refs/heads/master/shunit2")
@@ -24,12 +52,16 @@ wget https://raw.githubusercontent.com/sara-nl/GridScripts/master/view-macaroon 
 wget https://raw.githubusercontent.com/sara-nl/GridScripts/master/get-macaroon -P ada
 ```
 
+### Testing
+
 To test the installation, run:
 ```
 tests/unit_test.sh
 ```
 
-The unit tests will perform a dry-run, i.e. commands are not actually send to the dCache API, but simply printed and compared to what is expected. To perform an integration test, where commands are actually executed on the dCache storage, you must first create a configuration file `tests/test.conf`. See `tests/test_example.conf` for what information is needed. Then run:
+The unit tests will perform a dry-run, i.e. commands are not actually sent to the dCache API, but simply printed and compared to what is expected. 
+
+The integration test actually executes commands on the dCache API. Set up a configuration file `tests/test.conf` based on `tests/test_example.conf`. Then run:
 ```
 tests/integration_test.sh
 ```
