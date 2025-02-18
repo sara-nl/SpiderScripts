@@ -811,6 +811,13 @@ setup_dirs () {
   mkdir -p "$ada_dir"/channels
   touch "$requests_log"
   chmod -R u=rwX,g=,o= "$ada_dir"
+  #
+  # If ada is used with --debug, the curl header files are not cleaned up.
+  # The users are supposed to do that themselves.
+  # But they might forget, and keeping the header files for too long
+  # might not be very safe on a shared system.
+  # So, we clean up all header files older than 10 hours.
+  find "$ada_dir"/headers -type f -name 'authorization_header_*' -mtime +10h -delete
 }
 
 
@@ -1879,9 +1886,11 @@ construct_auth() {
       if $debug ; then
         trap "{
                 echo
-                echo 'WARNING: in debug mode, the authorization header file' \
-                    '$curl_authorization_header_file will not be cleaned up.' \
-                    'Please clean it up yourself.'
+                echo 'WARNING: Debug mode detected. The authorization header file' \
+                     '($curl_authorization_header_file) will not be deleted immediately,' \
+                     'so that you may use it for further debugging.' \
+                     'Ada will clean up authorization header files older than 10 hours.' \
+                     'If security is a concern, please manually delete the file to ensure immediate cleanup.'
               }" EXIT
       else
         trap 'rm -f "$curl_authorization_header_file"' EXIT
