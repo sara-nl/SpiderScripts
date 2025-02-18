@@ -216,7 +216,7 @@ usage() {
 
 	Configuration files:
 
-	  Default values can be stored in /etc/ada.conf and ~/.ada/ada.conf.
+	  Default values can be stored in ~/.ada/ada.conf, /etc/ada.conf and ./etc/ada.conf
 	  For example:
 	  api='https://prometheus.desy.de:3880/api/v1/'
 
@@ -244,7 +244,7 @@ usage() {
 	    2. environment variables
 	    3. ~/.ada/ada.conf
 	    4. /etc/ada.conf
-
+	    5. ./etc/ada.conf
 
 	Examples:
 	  $0 ... (todo)
@@ -296,11 +296,10 @@ set_defaults() {
                         --fail --silent --show-error
                       )
 
-  # Load defaults from configuration file if exists
-  declare -a configfiles=( /etc/ada.conf ~/.ada/ada.conf )
+  # Load defaults from configuration file if exists 
+  declare -a configfiles=( "${script_dir}"/etc/ada.conf /etc/ada.conf ~/.ada/ada.conf )
   for configfile in "${configfiles[@]}" ; do
     if [ -f "$configfile" ] ; then
-      $debug && echo "Loading $configfile"
       source "$configfile"
     fi
   done
