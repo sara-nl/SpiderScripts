@@ -7,7 +7,7 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
-# 2025-02-18 - Haili   - Read config from ./etc/ada.conf (as last option)
+# 2025-02-18 - Haili   - Read config from <script_dir>/etc/ada.conf (as last option)
 # 2025-01-14 - Onno    - Add support for extended attributes
 # 2024-12-30 - Onno    - Add support for labels
 # 2024-12-27 - Onno    - Improved token validation
@@ -217,7 +217,7 @@ usage() {
 
 	Configuration files:
 
-	  Default values can be stored in ~/.ada/ada.conf, /etc/ada.conf and ./etc/ada.conf
+	  Default values can be stored in ~/.ada/ada.conf, /etc/ada.conf and <script_dir>/etc/ada.conf
 	  For example:
 	  api='https://prometheus.desy.de:3880/api/v1/'
 
@@ -245,7 +245,7 @@ usage() {
 	    2. environment variables
 	    3. ~/.ada/ada.conf
 	    4. /etc/ada.conf
-	    5. ./etc/ada.conf
+	    5. <script_dir>/etc/ada.conf
 
 	Examples:
 	  $0 ... (todo)
