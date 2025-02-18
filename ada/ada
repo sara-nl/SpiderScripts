@@ -7,6 +7,7 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
+# 2025-02-18 - Haili   - Read config from ./etc/ada.conf (as last option)
 # 2025-01-14 - Onno    - Add support for extended attributes
 # 2024-12-30 - Onno    - Add support for labels
 # 2024-12-27 - Onno    - Improved token validation
@@ -296,7 +297,7 @@ set_defaults() {
                         --fail --silent --show-error
                       )
 
-  # Load defaults from configuration file if exists 
+  # Load defaults from configuration file if exists
   declare -a configfiles=( "${script_dir}"/etc/ada.conf /etc/ada.conf ~/.ada/ada.conf )
   for configfile in "${configfiles[@]}" ; do
     if [ -f "$configfile" ] ; then
