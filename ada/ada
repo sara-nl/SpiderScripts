@@ -1090,14 +1090,14 @@ create_path () {
   parent=$(urlencode "$(dirname "$path")")
   name=$(basename "$path")
   (
-    $debug && set -x   # If --debug is specified, show (only) curl command
+    $debug && set -x   # If --debug is specified, show curl & jq command
     curl "${curl_authorization[@]}" \
           "${curl_options_common[@]}" \
           "${curl_options_post[@]}" \
           -X POST "$api/namespace/$parent" \
-          -d "{\"action\":\"mkdir\",\"name\":\"$name\"}"
-  ) \
-  | jq -r .status
+          -d "{\"action\":\"mkdir\",\"name\":\"$name\"}" \
+    | jq -r .status
+  )
 }
 
 
@@ -1146,9 +1146,9 @@ delete_path () {
       $debug && set -x
       curl "${curl_authorization[@]}" \
            "${curl_options_common[@]}" \
-           -X DELETE "$api/namespace/$encoded_path"
-    ) \
-    | jq -r .status
+           -X DELETE "$api/namespace/$encoded_path" \
+      | jq -r .status
+    )
   fi
 }
 
@@ -1156,7 +1156,7 @@ delete_path () {
 get_locality () {
   local path="$1"
   locality="$( (\
-    $debug && set -x   # If --debug is specified, show (only) curl command
+    $debug && set -x   # If --debug is specified, show curl & jq command
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
          "${curl_options_post[@]}" \
@@ -1226,14 +1226,15 @@ bulk_request() {
   data="{\"activity\": \"${activity}\", \"arguments\": ${arguments}, \"target\": ${target}, \"expand_directories\": \"${expand}\"}"
   $debug || echo "$target  "
   (
-    $debug && set -x   # If --debug is specified, show (only) curl command
+    $debug && set -x   # If --debug is specified, show curl command
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
          "${curl_options_post[@]}" \
          -X POST "$api/bulk-requests" \
          -d "${data}" \
-         --dump-header -
-  ) | grep -e request-url -e Date | tee -a "${requests_log}"
+         --dump-header - \
+    | grep -e request-url -e Date | tee -a "${requests_log}"
+  )
   $debug && echo "Information about bulk request is logged in $requests_log."
   echo "activity: $activity" >> $requests_log
   echo "target: $target" | sed 's/,/,\n         /g' >> $requests_log
@@ -1342,9 +1343,9 @@ get_channels () {
     $debug && set -x
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
-         -X GET "$api/events/channels${query}"
-  ) \
-  | jq -r '.[]'
+         -X GET "$api/events/channels${query}" \
+    | jq -r '.[]'
+  )
 }
 
 channel_subscribe () {
@@ -1375,9 +1376,9 @@ get_subscriptions_by_channel () {
     $debug && set -x
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
-         -X GET "$channel/subscriptions"
-  ) \
-  | jq -r '.[]'
+         -X GET "$channel/subscriptions" \
+    | jq -r '.[]'
+  )
 }
 
 
@@ -1388,10 +1389,10 @@ list_subscription () {
     $debug && set -x
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
-         -X GET "$subscription"
-  ) \
+         -X GET "$subscription" \
   | jq -r 'to_entries[] | [.key, .value] | @tsv' \
   | tr '\t' '='
+  )
 }
 
 
@@ -1401,9 +1402,9 @@ get_path_from_subscription () {
     $debug && set -x
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
-         -X GET "$subscription"
-  ) \
-  | jq -r .path
+         -X GET "$subscription" \
+    | jq -r .path
+  )
 }
 
 
@@ -1504,16 +1505,16 @@ follow_channel () {
                         # Show file properties (locality, QoS, name)
                         encoded_path=$(urlencode "${path}/${object_name}")
                         (
-                          $debug && set -x   # If --debug is specified, show (only) curl command
+                          $debug && set -x   # If --debug is specified, show curl, jq & sed command
                           curl "${curl_authorization[@]}" \
                                "${curl_options_common[@]}" \
-                               -X GET "$api/namespace/$encoded_path?locality=true&qos=true"
-                        ) \
-                        | jq -r '[ .fileLocality ,
+                               -X GET "$api/namespace/$encoded_path?locality=true&qos=true" \
+                          | jq -r '[ .fileLocality ,
                                    if .targetQos then (.currentQos + "→" + .targetQos) else .currentQos end ,
                                    "'"${path}/${object_name}"'" ]
                                  | @tsv' \
-                        | sed -e 's/\t/  /g'
+                          | sed -e 's/\t/  /g'
+                        )
                       fi
                       ;;
                     '' )
@@ -1566,19 +1567,19 @@ list_online_files () {
   # Show online files in this dir with locality and QoS
   encoded_path=$(urlencode "$path")
   (
-    $debug && set -x   # If --debug is specified, show (only) curl command
+    $debug && set -x   # If --debug is specified, show curl, jq & sed command
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
-         -X GET "$api/namespace/$encoded_path?children=true&locality=true&qos=true"
-  ) \
-  | jq -r '.children
+         -X GET "$api/namespace/$encoded_path?children=true&locality=true&qos=true" \
+    | jq -r '.children
            | .[]
            | if .fileType == "REGULAR" then . else empty end
            | [ .fileLocality ,
                if .targetQos then (.currentQos + "→" + .targetQos) else .currentQos end ,
                "'"$path"'/" + .fileName ]
            | @tsv' \
-  | sed -e 's/\t/  /g'
+    | sed -e 's/\t/  /g'
+  )
   # If recursion is requested, do the same in subdirs.
   if $recursive ; then
     get_subdirs "$path" \
@@ -1595,7 +1596,7 @@ get_dcache_versions () {
   # depending on considerations of the sysadmin.
   # We print a JSON array of all unique versions.
   (
-    $debug && set -x   # If --debug is specified, show (only) curl command
+    $debug && set -x   # If --debug is specified, show curl & jq command
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
          -X GET "$api/cells" \
@@ -1932,29 +1933,29 @@ api_call () {
       get_dcache_versions
       echo "User identity:"
       (
-        $debug && set -x   # If --debug is specified, show (only) curl command
+        $debug && set -x   # If --debug is specified, show curl & jq command
         curl "${curl_authorization[@]}" \
              "${curl_options_common[@]}" \
-             -X GET "$api/user"
-      ) \
+             -X GET "$api/user" \
       | jq .
+      )
       ;;
     list )
       type=$(pathtype "$path")
       case $type in
         DIR )
           (
-            $debug && set -x   # If --debug is specified, show (only) curl command
+            $debug && set -x   # If --debug is specified, show curl & jq command
             curl "${curl_authorization[@]}" \
                  "${curl_options_common[@]}" \
                  -X GET "$api/namespace/$(urlencode "$path")?children=true" \
-            || { echo "API call failed." 1>&2 ; exit 1 ; }
-          ) \
-          | jq -r '.children | .[] | [ .fileName , .fileType ] | @tsv' \
-          | sed -e $'s@\tREGULAR@@' \
+            || { echo "API call failed." 1>&2 ; exit 1 ; } \
+            | jq -r '.children | .[] | [ .fileName , .fileType ] | @tsv' \
+            | sed -e $'s@\tREGULAR@@' \
                 -e $'s@\tDIR@/@' \
                 -e $'s@\tLINK@@' \
-          | sort
+            | sort
+          )
           ;;
         REGULAR | LINK )
           # User asked listing of a regular file (not a dir).
@@ -1981,12 +1982,11 @@ api_call () {
         case $type in
           DIR )
             (
-              $debug && set -x   # If --debug is specified, show (only) curl command
+              $debug && set -x   # If --debug is specified, show curl & jq  command
               curl "${curl_authorization[@]}" \
                    "${curl_options_common[@]}" \
-                   -X GET "$api/namespace/$encoded_path?children=true&locality=true&qos=true"
-            ) \
-            | jq -r '.children | .[]
+                   -X GET "$api/namespace/$encoded_path?children=true&locality=true&qos=true" \
+              | jq -r '.children | .[]
                      | [ .fileName ,
                          .fileType ,
                          .size ,
@@ -1994,25 +1994,26 @@ api_call () {
                          if .targetQos then (.currentQos + "→" + .targetQos) else .currentQos end ,
                          .fileLocality ]
                      | @tsv' \
-            | sed -e $'s@\tREGULAR@@' \
+              | sed -e $'s@\tREGULAR@@' \
                   -e $'s@\tDIR@/@' \
                   -e $'s@\tLINK@§@'
+            )
             # Note: it would be better to use strflocaltime instead of strftime,
             # but that requires a newer version of jq than Centos 7 has.
             ;;
           REGULAR | LINK )
             (
-              $debug && set -x   # If --debug is specified, show (only) curl command
+              $debug && set -x   # If --debug is specified, show curl & jq command
               curl "${curl_authorization[@]}" \
                    "${curl_options_common[@]}" \
-                    -X GET "$api/namespace/$encoded_path?locality=true&qos=true"
-            ) \
-            | jq -r '[ .size ,
+                    -X GET "$api/namespace/$encoded_path?locality=true&qos=true" \
+              | jq -r '[ .size ,
                        (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ,
                        if .targetQos then (.currentQos + "→" + .targetQos) else .currentQos end ,
                        .fileLocality ]
                      | @tsv' \
-            | sed -e "s@^@$path\t@"
+              | sed -e "s@^@$path\t@"
+            )
             ;;
           '' )
             # The path may not exist, or we may not have permission to see it.
@@ -2038,9 +2039,9 @@ api_call () {
         $debug && set -x
         curl "${curl_authorization[@]}" \
              "${curl_options_common[@]}" \
-             -X GET "$api/id/$pnfsid"
-      ) \
-      | jq .
+             -X GET "$api/id/$pnfsid" \
+        | jq .
+      )
       ;;
     mkdir )
       create_path $path $recursive
@@ -2058,14 +2059,14 @@ api_call () {
       esac
       encoded_path=$(urlencode "$path")
       (
-        $debug && set -x   # If --debug is specified, show (only) curl command
+        $debug && set -x   # If --debug is specified, show curl & jq command
         curl "${curl_authorization[@]}" \
              "${curl_options_common[@]}" \
              "${curl_options_post[@]}" \
              -X POST "$api/namespace/$encoded_path" \
-             -d "{\"action\":\"mv\",\"destination\":\"$destination\"}"
-      ) \
-      | jq -r .status
+             -d "{\"action\":\"mv\",\"destination\":\"$destination\"}" \
+        | jq -r .status
+      )
       ;;
     delete )
       case $(pathtype "$path") in
@@ -2108,14 +2109,14 @@ api_call () {
       case $command in
         setlabel )
           (
-            $debug && set -x   # If --debug is specified, show (only) curl command
+            $debug && set -x   # If --debug is specified, show curl & jq command
             curl "${curl_authorization[@]}" \
                  "${curl_options_common[@]}" \
                  "${curl_options_post[@]}" \
                  -X POST "$api/namespace/$encoded_path" \
-                 -d "{\"action\":\"set-label\",\"label\":\"$label\"}"
-          ) \
-          | jq -r .status
+                 -d "{\"action\":\"set-label\",\"label\":\"$label\"}" \
+            | jq -r .status
+          )
           ;;
         rmlabel  )
           case $label in
@@ -2158,7 +2159,7 @@ api_call () {
           ;;
         lslabel )
           labels=$(
-                    $debug && set -x   # If --debug is specified, show (only) curl command
+                    $debug && set -x   # If --debug is specified, show curl command
                     curl "${curl_authorization[@]}" \
                     "${curl_options_common[@]}" \
                     "${curl_options_post[@]}" \
@@ -2208,18 +2209,18 @@ api_call () {
           xattr_json=$(to_json "$attributes") || exit 1
           echo "$xattr_json"
           (
-            $debug && set -x   # If --debug is specified, show (only) curl command
+            $debug && set -x   # If --debug is specified, show curl & jq command
             curl "${curl_authorization[@]}" \
                  "${curl_options_common[@]}" \
                  "${curl_options_post[@]}" \
                  -X POST "$api/namespace/$encoded_path" \
-                   -d "{\"action\":\"set-xattr\",\"attributes\":$xattr_json}"
-          ) \
-          | jq -r .status
+                   -d "{\"action\":\"set-xattr\",\"attributes\":$xattr_json}" \
+            | jq -r .status
+          )
           ;;
         lsxattr )
           attributes=$(
-                        $debug && set -x   # If --debug is specified, show (only) curl command
+                        $debug && set -x   # If --debug is specified, show curl command
                         curl "${curl_authorization[@]}" \
                         "${curl_options_common[@]}" \
                         "${curl_options_post[@]}" \
@@ -2242,7 +2243,7 @@ api_call () {
             --all )
               # User wants to remove all attributes of this file. We ask the API for a list.
               names_json=$(
-                            $debug && set -x   # If --debug is specified, show (only) curl command
+                            $debug && set -x   # If --debug is specified, show curl & jq command
                             curl "${curl_authorization[@]}" \
                             "${curl_options_common[@]}" \
                             "${curl_options_post[@]}" \
@@ -2271,14 +2272,14 @@ api_call () {
               ;;
           esac
           (
-            $debug && set -x   # If --debug is specified, show (only) curl command
+            $debug && set -x   # If --debug is specified, show curl & jq command
             curl "${curl_authorization[@]}" \
                  "${curl_options_common[@]}" \
                  "${curl_options_post[@]}" \
                  -X POST "$api/namespace/$encoded_path" \
-                 -d "{\"action\":\"rm-xattr\",\"names\":$names_json}"
-          ) \
-          | jq -r .status
+                 -d "{\"action\":\"rm-xattr\",\"names\":$names_json}" \
+            | jq -r .status
+          )
           ;;
         * )
           echo 1>&2 "Unexpected xattr command '$command'."
