@@ -685,7 +685,11 @@ view_token() {
     echo "$payload" | jq '. | .exp |= todate | .nbf |= todate | .iat |= todate'
   else
     # Not an OIDC token; probably a Macaroon
-    macaroon_decoded=$(echo "$token" | base64 -d 2>/dev/null | awk '{print substr($0, 5)}' 2>/dev/null | tr -d '\0')
+    macaroon_decoded=$(echo "$token" \
+                       | base64 -d 2>/dev/null \
+                       | awk '{print substr($0, 5)}' 2>/dev/null \
+                       | grep -v 'signature' \
+                       | tr -d '\0')
 
     # Check if decoding succeeded
     if [ -z "$macaroon_decoded" ]; then
@@ -693,8 +697,7 @@ view_token() {
       return 1
     fi
 
-    # Show macaroon without signature
-    echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | grep -v 'signature' | sed -e 's/^/  /'
+    echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | sed -e 's/^/  /'
   fi
 }
 
@@ -772,7 +775,11 @@ check_token() {
     # Macaroon Token (assume it's base64 encoded)
     $debug && echo "Checking Macaroon token..."
 
-    macaroon_decoded=$(echo "$token" | base64 -d 2>/dev/null | awk '{print substr($0, 5)}' 2>/dev/null | tr -d '\0')
+    macaroon_decoded=$(echo "$token" \
+                       | base64 -d 2>/dev/null \
+                       | awk '{print substr($0, 5)}' 2>/dev/null \
+                       | grep -v 'signature' \
+                       | tr -d '\0')
 
     # Check if decoding succeeded
     if [ -z "$macaroon_decoded" ]; then
@@ -807,7 +814,7 @@ check_token() {
     validate_expiration_timestamp "$exp_unix" "$min_valid_time" "$token_debug_info"
 
     # If we get here, it means we have a valid macaroon.
-    $debug && echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | grep -v 'signature' | sed -e 's/^/  /'
+    $debug && echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | sed -e 's/^/  /'
     $debug && echo "Macaroon is valid"
     return 0
   fi
