@@ -834,8 +834,8 @@ setup_dirs () {
   # The users are supposed to do that themselves.
   # But they might forget, and keeping the header files for too long
   # might not be very safe on a shared system.
-  # So, we clean up all header files older than 10 hours.
-  find "$ada_dir"/headers -type f -name 'authorization_header_*' -mtime +10h -delete
+  # So, we clean up all header files that haven't been used for 10 hours.
+  find "$ada_dir"/headers -type f -name 'authorization_header_*' -amin +600 -delete
 }
 
 
