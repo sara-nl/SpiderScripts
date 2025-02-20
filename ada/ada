@@ -7,6 +7,7 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
+# 2025-02-20 - Onno    - Fail early when a token is about to expire
 # 2025-02-18 - Haili   - Read config from <script_dir>/etc/ada.conf (as last option)
 # 2025-01-14 - Onno    - Add support for extended attributes
 # 2024-12-30 - Onno    - Add support for labels
@@ -685,7 +686,11 @@ view_token() {
     echo "$payload" | jq '. | .exp |= todate | .nbf |= todate | .iat |= todate'
   else
     # Not an OIDC token; probably a Macaroon
-    macaroon_decoded=$(echo "$token" | base64 -d 2>/dev/null | awk '{print substr($0, 5)}' 2>/dev/null | tr -d '\0')
+    macaroon_decoded=$(echo "$token" \
+                       | base64 -d 2>/dev/null \
+                       | awk '{print substr($0, 5)}' 2>/dev/null \
+                       | grep -v 'signature' \
+                       | tr -d '\0')
 
     # Check if decoding succeeded
     if [ -z "$macaroon_decoded" ]; then
@@ -693,11 +698,47 @@ view_token() {
       return 1
     fi
 
-    # Show macaroon without signature
-    echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | grep -v 'signature' | sed -e 's/^/  /'
+    echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | sed -e 's/^/  /'
   fi
 }
 
+
+
+validate_expiration_timestamp () {
+  local exp_unix="$1"           # Expiration timestamp (unix format)
+  local token_debug_info="$2"   # Additional info for error message
+  local min_valid_time=60       # Token should be valid for more that this many seconds
+
+  # Do we actually have an expiration timestamp?
+  if [ -z "$exp_unix" ] || ! [[ "$exp_unix" =~ ^[0-9]+$ ]]; then
+    echo 1>&2 "ERROR: Invalid token: missing or invalid expiration field"
+    echo 1>&2 "$token_debug_info"
+    exit 1
+  fi
+
+  # Get the current time in seconds since epoch
+  now=$(date +%s)
+
+  # Check if the token is expired
+  if [ "$now" -ge "$exp_unix" ]; then
+    echo 1>&2 "$token_debug_info"
+    echo 1>&2 "ERROR: Token has expired $(( now - exp_unix )) seconds ago."
+    exit 1
+  fi
+
+  # Check if the token is about to expire
+  if [ "$now" -ge "$(( exp_unix - min_valid_time ))" ]; then
+    echo 1>&2 "$token_debug_info"
+    # print error
+    echo 1>&2 "ERROR: Token will expire in $(( exp_unix - now )) seconds." \
+              "Please use a token that is valid for more than $min_valid_time seconds," \
+              "to ensure Ada can finish the task."
+    exit 1
+  fi
+
+  # If we get here, the expiration timestamp should be valid.
+  return 0
+}
 
 
 check_token() {
@@ -718,27 +759,10 @@ check_token() {
     fi
 
     # Extract expiration time (exp) from payload
-    exp=$(echo "$payload" | jq -r '.exp' 2>/dev/null)
+    exp_unix=$(echo "$payload" | jq -r '.exp' 2>/dev/null)
 
-    # Validate expiration field
-    if [ -z "$exp" ] || ! [[ "$exp" =~ ^[0-9]+$ ]]; then
-      echo 1>&2 "ERROR: Invalid token: missing or invalid 'exp' field"
-      echo 1>&2 "$token_debug_info"
-      return 1
-    fi
-
-    # Get the current time in seconds since epoch
-    now=$(date +%s)
-
-    # Check if the token is expired
-    if [ "$now" -ge "$exp" ]; then
-      echo 1>&2 "$token_debug_info"
-      # Print JWT/OIDC token with human readable timestamps
-      echo "$payload" | jq '. | .exp |= todate | .nbf |= todate | .iat |= todate' 1>&2
-      # print error
-      echo 1>&2 "ERROR: JWT / OIDC token has expired $(( now - exp )) seconds ago."
-      return 1
-    fi
+    # Fail if the token has (almost) expired
+    validate_expiration_timestamp "$exp_unix" "$token_debug_info"
 
     # If we get here, it means we have a valid OIDC token.
     $debug && echo "$payload" | jq '. | .exp |= todate | .nbf |= todate | .iat |= todate'
@@ -749,7 +773,11 @@ check_token() {
     # Macaroon Token (assume it's base64 encoded)
     $debug && echo "Checking Macaroon token..."
 
-    macaroon_decoded=$(echo "$token" | base64 -d 2>/dev/null | awk '{print substr($0, 5)}' 2>/dev/null | tr -d '\0')
+    macaroon_decoded=$(echo "$token" \
+                       | base64 -d 2>/dev/null \
+                       | awk '{print substr($0, 5)}' 2>/dev/null \
+                       | grep -v 'signature' \
+                       | tr -d '\0')
 
     # Check if decoding succeeded
     if [ -z "$macaroon_decoded" ]; then
@@ -768,33 +796,23 @@ check_token() {
       return 1
     fi
 
-    # Convert expiration time to epoch seconds
+    # Convert expiration time to unix time (seconds since epoch)
     case $OSTYPE in
-      darwin* )  exp_epoch=$(date -j -f "%Y-%m-%dT%H:%M:%S" "${exp:0:19}" +"%s" 2>/dev/null)  ;;
-            * )  exp_epoch=$(date -d "$exp" +%s 2>/dev/null)  ;;
+      darwin* )  exp_unix=$(date -u -j -f "%Y-%m-%dT%H:%M:%S" "${exp:0:19}" +"%s" 2>/dev/null)  ;;
+            * )  exp_unix=$(date -d "$exp" +%s 2>/dev/null)  ;;
     esac
 
-    if [ -z "$exp_epoch" ]; then
+    if [ -z "$exp_unix" ]; then
       echo 1>&2 "ERROR: invalid macaroon: unable to parse 'before' timestamp"
       echo 1>&2 "$token_debug_info"
       return 1
     fi
 
-    # Get the current time in UTC in seconds since epoch
-    now=$(date +%s)
-
-    # Check if the macaroon is expired
-    if [ "$now" -ge "$exp_epoch" ]; then
-      echo 1>&2 "$token_debug_info"
-      # Show macaroon without signature
-      echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | grep -v 'signature' | sed -e 's/^/  /' 1>&2
-      # Show error
-      echo 1>&2 "ERROR: Macaroon has expired $((now - exp_epoch)) seconds ago."
-      return 1
-    fi
+    # Fail if the token has (almost) expired
+    validate_expiration_timestamp "$exp_unix" "$token_debug_info"
 
     # If we get here, it means we have a valid macaroon.
-    $debug && echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | grep -v 'signature' | sed -e 's/^/  /'
+    $debug && echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | sed -e 's/^/  /'
     $debug && echo "Macaroon is valid"
     return 0
   fi
@@ -1735,7 +1753,11 @@ validate_input() {
         echo 1>&2 "ERROR: no tokenfile, nor variable BEARER_TOKEN specified."
         exit 1
       fi
-      check_token "$token" || exit 1
+      # Token should be valid - unless we want to view the token!
+      # We should be able to view also invalid tokens (to check what's wrong with them).
+      if [[ $command != 'viewtoken' ]] ; then
+        check_token "$token" "$token_debug_info" || exit 1
+      fi
       ;;
     netrc )
       if [ ! -f "$netrcfile" ] ; then
