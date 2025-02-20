@@ -705,8 +705,8 @@ view_token() {
 
 validate_expiration_timestamp () {
   local exp_unix="$1"           # Expiration timestamp (unix format)
-  local min_valid_time="$2"     # Token should be valid for more that this many seconds
-  local token_debug_info="$3"   # Additional info for error message
+  local token_debug_info="$2"   # Additional info for error message
+  local min_valid_time=60       # Token should be valid for more that this many seconds
 
   # Do we actually have an expiration timestamp?
   if [ -z "$exp_unix" ] || ! [[ "$exp_unix" =~ ^[0-9]+$ ]]; then
@@ -743,9 +743,6 @@ validate_expiration_timestamp () {
 check_token() {
   local token="$1"
   local token_debug_info="$2"
-  # We're not starting with a token that is about to expire!
-  # The minimum lifetime is 10 seconds, unless specified otherwise in $3.
-  local min_valid_time="${3:-10}"
 
   # Determine token type (JWT or Macaroon)
   if [[ "$token" =~ ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]]; then
@@ -764,7 +761,7 @@ check_token() {
     exp_unix=$(echo "$payload" | jq -r '.exp' 2>/dev/null)
 
     # Fail if the token has (almost) expired
-    validate_expiration_timestamp "$exp_unix" "$min_valid_time" "$token_debug_info"
+    validate_expiration_timestamp "$exp_unix" "$token_debug_info"
 
     # If we get here, it means we have a valid OIDC token.
     $debug && echo "$payload" | jq '. | .exp |= todate | .nbf |= todate | .iat |= todate'
@@ -811,7 +808,7 @@ check_token() {
     fi
 
     # Fail if the token has (almost) expired
-    validate_expiration_timestamp "$exp_unix" "$min_valid_time" "$token_debug_info"
+    validate_expiration_timestamp "$exp_unix" "$token_debug_info"
 
     # If we get here, it means we have a valid macaroon.
     $debug && echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | sed -e 's/^/  /'
@@ -1757,12 +1754,7 @@ validate_input() {
       # Token should be valid - unless we want to view the token!
       # We should be able to view also invalid tokens (to check what's wrong with them).
       if [[ $command != 'viewtoken' ]] ; then
-        if $recursive ; then
-          # For recursive operations, we want the token to be valid for at least 60 seconds.
-          check_token "$token" "$token_debug_info" 60 || exit 1
-        else
-          check_token "$token" "$token_debug_info" || exit 1
-        fi
+        check_token "$token" "$token_debug_info" || exit 1
       fi
       ;;
     netrc )
