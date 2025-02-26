@@ -7,6 +7,7 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
+# 2025-02-26 - Onno    - Reload tokenfile if there's a new token
 # 2025-02-20 - Onno    - Fail early when a token is about to expire
 # 2025-02-18 - Haili   - Read config from <script_dir>/etc/ada.conf (as last option)
 # 2025-01-14 - Onno    - Add support for extended attributes
@@ -266,6 +267,8 @@ set_defaults() {
   dry_run=false
   channel_timeout=3600
   auth_method=
+  token=
+  tokenfile=
   certdir=${X509_CERT_DIR:-/etc/grid-security/certificates}
   igtf=true
   lifetime=7
