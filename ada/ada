@@ -707,7 +707,7 @@ view_token() {
 validate_expiration_timestamp () {
   local exp_unix="$1"           # Expiration timestamp (unix format)
   local token_debug_info="$2"   # Additional info for error message
-  local min_valid_time=60       # Token should be valid for more that this many seconds
+  local min_valid_time=60       # Token should be valid for more than this many seconds
 
   # Do we actually have an expiration timestamp?
   if [ -z "$exp_unix" ] || ! [[ "$exp_unix" =~ ^[0-9]+$ ]]; then
