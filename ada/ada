@@ -257,6 +257,22 @@ usage() {
   exit 1
 }
 
+
+get_permissions () {
+  # Returns the access permissions of a file in 'drwxrwxrwx' format.
+  local file="$1"
+  case $OSTYPE in
+    darwin* )  permissions=$(stat -f "%Sp"      "$file" | grep -o '^..........$' )  ;;
+    * )        permissions=$(stat --format='%A' "$file" | grep -o '^..........$' )  ;;
+  esac
+  if [ -z "$permissions" ] ; then
+    echo 1>&2 "ERROR: Could not check permissions of file '$file'."
+    exit 1
+  fi
+  echo "$permissions"
+}
+
+
 #
 # Set default values and initialize variables
 #
@@ -302,6 +318,12 @@ set_defaults() {
   declare -a configfiles=( "${script_dir}"/etc/ada.conf /etc/ada.conf ~/.ada/ada.conf )
   for configfile in "${configfiles[@]}" ; do
     if [ -f "$configfile" ] ; then
+      # Before loading, check permissions. Source file must never be world writable!
+      permissions=$(get_permissions "$configfile") || exit 1
+      if grep '^........w.$' <<<"$permissions" ; then
+        echo 1>&2 "ERROR: Config file '$configfile' is world writable. This is a security risk."
+        exit 1
+      fi
       source "$configfile"
     fi
   done
@@ -1734,7 +1756,19 @@ validate_input() {
           echo 1>&2 "ERROR: specified tokenfile does not exist."
           exit 1
         fi
-
+        # Tokenfile must never be world readable or writable!
+        if get_permissions "$tokenfile" | grep '^........w.$' ; then
+          echo 1>&2 "ERROR: Tokenfile '$tokenfile' is world writable." \
+                    "This may be unsafe on shared systems. Use chmod to change the permissions."
+          exit 1
+        fi
+        if get_permissions "$tokenfile" | grep '^.......r..$' ; then
+          echo 1>&2 "ERROR: Tokenfile '$tokenfile' is world readable." \
+                    "This may be unsafe on shared systems. Use chmod to change the permissions."
+          exit 1
+        fi
+        #
+        # First, we assume the tokenfile is an Rclone config file.
         token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
         if [ "$(wc -l <<<"$token")" -gt 1 ] ; then
           echo 1>&2 "ERROR: file '$tokenfile' contains multiple tokens."
