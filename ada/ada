@@ -1971,7 +1971,6 @@ api_call () {
             curl "${curl_authorization[@]}" \
                  "${curl_options_common[@]}" \
                  -X GET "$api/namespace/$(urlencode "$path")?children=true" \
-            || { echo "API call failed." 1>&2 ; exit 1 ; } \
             | jq -r '.children | .[] | [ .fileName , .fileType ] | @tsv' \
             | sed -e $'s@\tREGULAR@@' \
                 -e $'s@\tDIR@/@' \
