@@ -351,7 +351,7 @@ get_args() {
         ;;
       --version )
         git_dir=$(dirname "${script_dir}")
-        _VERSION_PLACEHOLDER=$(git --git-dir=${git_dir}/.git describe --tags --abbrev=0 2>/dev/null || echo "unknown")
+        _VERSION_PLACEHOLDER=$(git --git-dir=${git_dir}/.git describe --tags --abbrev=0 2>/dev/null || echo "v2.3+")
         echo "${_VERSION_PLACEHOLDER}"
         exit 1
         ;;
