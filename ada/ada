@@ -7,6 +7,7 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
+# 2025-02-26 - Onno    - Reload tokenfile if there's a new token
 # 2025-02-20 - Onno    - Fail early when a token is about to expire
 # 2025-02-18 - Haili   - Read config from <script_dir>/etc/ada.conf (as last option)
 # 2025-01-14 - Onno    - Add support for extended attributes
@@ -266,6 +267,8 @@ set_defaults() {
   dry_run=false
   channel_timeout=3600
   auth_method=
+  token=
+  tokenfile=
   certdir=${X509_CERT_DIR:-/etc/grid-security/certificates}
   igtf=true
   lifetime=7
@@ -819,6 +822,98 @@ check_token() {
 }
 
 
+load_token_from_tokenfile () {
+  local tokenfile="$1"
+
+  # First do some checks.
+  if [ -z "$tokenfile" ] ; then
+    echo 1>&2 "ERROR: don't know which tokenfile to load."
+    exit 1
+  fi
+  if ! [ -f "$tokenfile" ] ; then
+    echo 1>&2 "ERROR: specified tokenfile '$tokenfile' does not exist."
+    exit 1
+  fi
+
+  # Let's assume it's an Rclone config file that contains the token.
+  token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
+  if [ "$(wc -l <<<"$token")" -gt 1 ] ; then
+    echo 1>&2 "ERROR: file '$tokenfile' contains multiple tokens."
+    exit 1
+  fi
+  # If it was not an rclone config file, it may be a
+  # plain text file with only the token.
+  if [ -z "$token" ] ; then
+    token=$(head -n 1 "$tokenfile")
+  fi
+  # Have we loaded anything? If not, panic!
+  if [ -z "$token" ] ; then
+    echo 1>&2 "ERROR: could not read token from tokenfile '$tokenfile'."
+    exit 1
+  fi
+
+  # Return the token we loaded
+  echo "$token"
+}
+
+
+reload_tokenfile () {
+  # Long operations may outlast the token durations.
+  # It may be necessary to load a new token from the tokenfile.
+  # This function does that, if needed.
+  local tokenfile="$1"
+
+  # If there's no tokenfile specified, there may be
+  # some other authentication method.
+  # Might be x509, or username/password, or a token
+  # from an environment variable such as BEARER_TOKEN.
+  # It means we can't reload a token from a file,
+  # and we have nothing to do.
+  # Hope that all goes well and there's no token or
+  # proxy that may expire.
+  if [ ! -f "$tokenfile" ] ; then
+    return 0
+  fi
+
+  # Now we compare the modification times of the
+  # tokenfile and the curl authorization header file.
+  # The second is based on the first.
+  # So it should always be newer.
+  # If the first is newer, it has been modified!
+  # Probably this means it contains a new token
+  # and should be reloaded.
+  #
+  # Get file modification times (in unix time, seconds since epoch)
+  case $OSTYPE in
+    darwin* )
+      # MacOS has a different stat syntax
+      tokenfile_time=$(stat -f %m "$tokenfile")
+      auth_header_file_time=$(stat -f %m "$curl_authorization_header_file")
+      ;;
+    * )
+      tokenfile_time=$(stat -c %Y "$tokenfile")
+      auth_header_file_time=$(stat -c %Y "$curl_authorization_header_file")
+      ;;
+  esac
+
+  # Is the tokenfile newer than the curl auth header file?
+  if [[ $tokenfile_time -gt $auth_header_file_time ]] ; then
+    # Yes, we have a new token! Let's load it and put it in the header.
+    $debug && echo 1>&2 "Tokenfile has changed. Reloading."
+    token=$(load_token_from_tokenfile "$tokenfile")
+    #
+    # Check if the token is valid; quit when invalid
+    check_token "$token" "$token_debug_info" || exit 1
+    #
+    # Save the header in the file
+    echo "header \"Authorization: Bearer $token\"" > "$curl_authorization_header_file"
+  else
+    $debug && echo 1>&2 "No need to reload"
+    return 0
+  fi
+}
+
+
 #
 # Set up dir for settings, channel state info, curl authentication headers, and request logfile
 #
@@ -991,6 +1086,7 @@ find_label () {
   # If recursion was requested, we search for subdirs in $path, and do the same thing.
   if $recursive ; then
     for subdir in $(get_subdirs "$path") ; do
+      reload_tokenfile "$tokenfile"   # If there's a new token, load it
       find_label "$path/$subdir" "$regex" "$recursive"
     done
   fi
@@ -1062,6 +1158,7 @@ find_xattr () {
   # If recursion was requested, we search for subdirs in $path, and do the same thing.
   if $recursive ; then
     for subdir in $(get_subdirs "$path") ; do
+      reload_tokenfile "$tokenfile"   # If there's a new token, load it
       find_xattr "$path/$subdir" "$attribute_name" "$regex" "$recursive"
     done
   fi
@@ -1142,6 +1239,7 @@ delete_path () {
   if $recursive && [ "$path_type" = "DIR" ] ; then
     if $force || get_confirmation "Delete all items in $path?" ; then
       while read -r child ; do
+        reload_tokenfile "$tokenfile"   # If there's a new token, load it
         delete_path "$path/$child" "$recursive" "$force" \
         || aborted=true
       done < <(get_children "$path")
@@ -1291,6 +1389,7 @@ with_files_in_dir_do () {
   if $recursive ; then
     get_subdirs "$path" \
     | while read -r subdir ; do
+      reload_tokenfile "$tokenfile"   # If there's a new token, load it
       with_files_in_dir_do "$function" "$path/$subdir" "$recursive" "$@"
     done
   fi
@@ -1381,6 +1480,7 @@ channel_subscribe () {
   if $recursive ; then
     get_subdirs "$path" \
     | while read -r subdir ; do
+      reload_tokenfile "$tokenfile"   # If there's a new token, load it
       $debug && echo "Subscribing to: $path/$subdir"
       channel_subscribe "$channel" "$path/$subdir" "$recursive"
     done
@@ -1455,6 +1555,7 @@ follow_channel () {
          "${last_event_id_header[@]}"
   ) \
   | while IFS=': ' read -r key value ; do
+      reload_tokenfile "$tokenfile"   # If there's a new token, load it
       case $key in
         event )
           case $value in
@@ -1602,6 +1703,7 @@ list_online_files () {
   if $recursive ; then
     get_subdirs "$path" \
     | while read -r subdir ; do
+      reload_tokenfile "$tokenfile"   # If there's a new token, load it
       list_online_files "$path/$subdir" "$recursive"
     done
   fi
@@ -1730,27 +1832,9 @@ validate_input() {
   case $auth_method in
     token )
       if [ -n "$tokenfile" ] ; then
-        if ! [ -f "$tokenfile" ] ; then
-          echo 1>&2 "ERROR: specified tokenfile does not exist."
-          exit 1
-        fi
-
-        token=$(sed -n 's/^bearer_token *= *//p' "$tokenfile")
-        if [ "$(wc -l <<<"$token")" -gt 1 ] ; then
-          echo 1>&2 "ERROR: file '$tokenfile' contains multiple tokens."
-          exit 1
-        fi
-        # If it was not an rclone config file, it may be a
-        # plain text file with only the token.
-        if [ -z "$token" ] ; then
-          token=$(head -n 1 "$tokenfile")
-        fi
-        if [ -z "$token" ] ; then
-          echo 1>&2 "ERROR: could not read token from tokenfile."
-          exit 1
-        fi
+        token=$(load_token_from_tokenfile "$tokenfile")
       elif ! [ -n "$token" ] ; then
-        echo 1>&2 "ERROR: no tokenfile, nor variable BEARER_TOKEN specified."
+        echo 1>&2 "ERROR: neither tokenfile nor variable BEARER_TOKEN specified."
         exit 1
       fi
       # Token should be valid - unless we want to view the token!
