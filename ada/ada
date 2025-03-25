@@ -713,7 +713,7 @@ validate_expiration_timestamp () {
   if [ -z "$exp_unix" ] || ! [[ "$exp_unix" =~ ^[0-9]+$ ]]; then
     echo 1>&2 "ERROR: Invalid token: missing or invalid expiration field"
     echo 1>&2 "$token_debug_info"
-    exit 1
+    return 1
   fi
 
   # Get the current time in seconds since epoch
@@ -723,7 +723,7 @@ validate_expiration_timestamp () {
   if [ "$now" -ge "$exp_unix" ]; then
     echo 1>&2 "$token_debug_info"
     echo 1>&2 "ERROR: Token has expired $(( now - exp_unix )) seconds ago."
-    exit 1
+    return 1
   fi
 
   # Check if the token is about to expire
@@ -733,7 +733,7 @@ validate_expiration_timestamp () {
     echo 1>&2 "ERROR: Token will expire in $(( exp_unix - now )) seconds." \
               "Please use a token that is valid for more than $min_valid_time seconds," \
               "to ensure Ada can finish the task."
-    exit 1
+    return 1
   fi
 
   # If we get here, the expiration timestamp should be valid.
@@ -762,7 +762,7 @@ check_token() {
     exp_unix=$(echo "$payload" | jq -r '.exp' 2>/dev/null)
 
     # Fail if the token has (almost) expired
-    validate_expiration_timestamp "$exp_unix" "$token_debug_info"
+    validate_expiration_timestamp "$exp_unix" "$token_debug_info" || return 1
 
     # If we get here, it means we have a valid OIDC token.
     $debug && echo "$payload" | jq '. | .exp |= todate | .nbf |= todate | .iat |= todate'
@@ -809,7 +809,7 @@ check_token() {
     fi
 
     # Fail if the token has (almost) expired
-    validate_expiration_timestamp "$exp_unix" "$token_debug_info"
+    validate_expiration_timestamp "$exp_unix" "$token_debug_info" || return 1
 
     # If we get here, it means we have a valid macaroon.
     $debug && echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | sed -e 's/^/  /'

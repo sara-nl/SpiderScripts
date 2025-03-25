@@ -364,7 +364,7 @@ oneTimeSetUp() {
 
     # Check if macaroon is valid. If not, try to create one.
     token=$(sed -n 's/^bearer_token *= *//p' "$token_file")
-    (check_token "$token")
+    check_token "$token"
     error=$?
     if [ $error -eq 1 ]; then
         echo "The tests expect a valid macaroon. Please enter your CUA credentials to create one."
