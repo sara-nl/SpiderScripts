@@ -8,6 +8,18 @@ test_ada_version() {
     assertEquals "Check ada version:" "v2.3" ${result}
 }
 
+# Check whoami
+test_ada_whoami() {
+    command="ada/ada --whoami --tokenfile ${token_file} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    grep $user "${stdoutF}" >/dev/null
+    assertTrue "ada whoami did not give correct username" $?
+}
+
 # Create directory on dCache
 test_ada_mkdir() {
     command="ada/ada --tokenfile ${token_file} --mkdir /${disk_path}/${dirname}/${testdir}/${subdir} --recursive --api ${api}"
@@ -22,6 +34,18 @@ test_ada_mkdir() {
     assertTrue "could not get locality" $?
 }
 
+# Subscribe to events in dCache folder
+test_ada_events() {
+    command="ada/ada --tokenfile ${token_file} --events test1 /${disk_path}/${dirname}/${testdir} --recursive --api ${api} --timeout 60"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutE} 2>${stderrF} &
+    sleep 3
+    grep "path=/${disk_path}/${dirname}/${testdir}" "${stdoutE}"
+    assertTrue "ada could not subscribe to events" $?
+}
+
+
 # Move a file (created in oneTimeSetUp) to folder created in above test
 test_ada_mv1() {
     command="ada/ada --tokenfile ${token_file} --mv /${disk_path}/${dirname}/${testfile} /${disk_path}/${dirname}/${testdir}/${testfile} --api ${api}"
@@ -32,6 +56,13 @@ test_ada_mv1() {
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
     assertTrue "ada could not move the file" $?
+}
+
+# Check detection of event in dCache folder
+test_ada_detect_event() {
+    sleep 3
+    grep "inotify  /${disk_path}/${dirname}/${testdir}/${testfile}  IN_MOVED_TO" "${stdoutE}"
+    assertTrue "ada did not detect event IN_MOVED_TO" $?
 }
 
 # List file
@@ -206,7 +237,6 @@ test_ada_stat() {
     assertTrue "ada could not stat the correct file" $?
 }
 
-
 # Move file back to original folder
 test_ada_mv2() {
     command="ada/ada --tokenfile ${token_file} --mv /${disk_path}/${dirname}/${testdir}/${testfile} /${disk_path}/${dirname}/${testfile} --api ${api}"
@@ -229,6 +259,17 @@ test_ada_delete() {
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
     assertTrue "ada could not delete the directory" $?
+}
+
+# Subscribe to staging events in dCache folder
+test_ada_report_staged() {
+    command="ada/ada --tokenfile ${token_file} --report-staged test2 /${tape_path}/${dirname} --recursive --api ${api} --timeout 60"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutR} 2>${stderrF} &
+    sleep 3
+    grep "path=/${tape_path}/${dirname}" "${stdoutR}"
+    assertTrue "ada could not subscribe to staging events" $?
 }
 
 # Stage a file
@@ -309,6 +350,8 @@ oneTimeSetUp() {
     mkdir "${outputDir}"
     stdoutF="${outputDir}/stdout"
     stderrF="${outputDir}/stderr"
+    stdoutE="${outputDir}/events"
+    stdoutR="${outputDir}/report-staged"
     debug=false
     dry_run=false
     test="prod"
