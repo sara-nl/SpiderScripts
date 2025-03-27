@@ -373,6 +373,7 @@ oneTimeSetUp() {
             echo "Failed to create a macaroon. Aborting." 
             exit 
         fi
+        token=$(sed -n 's/^bearer_token *= *//p' "$token_file")
     fi
     # curl options for various activities;
     curl_options_common=(
