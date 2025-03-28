@@ -180,9 +180,11 @@ usage() {
 	  --unstage --from-file <file-list>
 	      Release files in the list.
 
-	  --events <channel-name> <path-to-follow> [--recursive] [--timeout s]
+	  --events <channel-name> <path-to-follow> [--resume] [--recursive] [--timeout s]
 	      Subscribe to changes in the given direcory,
 	      using server-sent events (SSE).
+	      If channel-name is already in use, you must add --resume
+	      to resume following this channel. 
 	      When --recursive is added, all subdirectories will be
 	      followed as well, including any new subdirectories
 	      that will be created.
@@ -191,9 +193,11 @@ usage() {
 	      after this timeout. Events that have not been processed
 	      will then be lost.
 
-	  --report-staged <channel-name> <path-to-follow> [--recursive] [--timeout s]
+	  --report-staged <channel-name> <path-to-follow> [--resume] [--recursive] [--timeout s]
 	      Subscribe to stage (bring online) events in a directory,
 	      using server-sent events (SSE).
+	      If channel-name is already in use, you must add --resume
+	      to resume following this channel. 
 	      This command is slightly different from --events:
 	      When you start it, all files in the scope will be listed,
 	      including their locality and QoS. This allows your event
@@ -293,6 +297,7 @@ set_defaults() {
   path=
   recursive=false
   force=false
+  resume=false
 
   # Default options to curl for various activities;
   # these can be overidden in configuration files, see below.
@@ -609,6 +614,10 @@ get_args() {
         force=true
         shift
         ;;
+      --resume )
+        resume=true
+        shift
+        ;;        
       --lifetime )
         arg="$2"
         lifetime=${arg::${#arg} -1}
@@ -2416,6 +2425,9 @@ api_call () {
                -X PATCH "$channel" \
                -d "{\"timeout\": $channel_timeout}"
         )
+      elif ! $resume ; then
+        echo 1>&2 "ERROR: channel name '$channelname' is already used. To resume following this channel, add  --resume."
+        exit 1
       fi
       echo "Channel: $channel"
       channel_subscribe "$channel" "$path" "$recursive"
