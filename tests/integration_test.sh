@@ -36,7 +36,7 @@ test_ada_mkdir() {
 
 # Subscribe to events in dCache folder
 test_ada_events() {
-    command="ada/ada --tokenfile ${token_file} --events test1 /${disk_path}/${dirname}/${testdir} --recursive --api ${api} --timeout 60"
+    command="ada/ada --tokenfile ${token_file} --events test1 /${disk_path}/${dirname}/${testdir} --recursive --api ${api} --timeout 60 --resume"
     echo "Running command:"
     echo $command
     eval $command >${stdoutE} 2>${stderrF} &
@@ -263,7 +263,7 @@ test_ada_delete() {
 
 # Subscribe to staging events in dCache folder
 test_ada_report_staged() {
-    command="ada/ada --tokenfile ${token_file} --report-staged test2 /${tape_path}/${dirname} --recursive --api ${api} --timeout 60"
+    command="ada/ada --tokenfile ${token_file} --report-staged test2 /${tape_path}/${dirname} --recursive --api ${api} --timeout 60 --resume"
     echo "Running command:"
     echo $command
     eval $command >${stdoutR} 2>${stderrF} &
