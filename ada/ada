@@ -186,8 +186,8 @@ usage() {
 	      using server-sent events (SSE).
 	      If channel name is already in use, you must add --resume
 	      to resume following this channel. 
-        If the channel name is not stored locally, you must also 
-        add --force to resume,
+	      If the channel name is not stored locally, you must also 
+	      add --force to resume,
 	      When --recursive is added, all subdirectories will be
 	      followed as well, including any new subdirectories
 	      that will be created.
@@ -201,8 +201,8 @@ usage() {
 	      using server-sent events (SSE).
 	      If channel name is already in use, you must add --resume
 	      to resume following this channel.
-        If the channel name is not stored locally, you must also 
-        add --force to resume,
+	      If the channel name is not stored locally, you must also 
+	      add --force to resume,
 	      This command is slightly different from --events:
 	      When you start it, all files in the scope will be listed,
 	      including their locality and QoS. This allows your event
