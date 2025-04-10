@@ -36,7 +36,7 @@ test_ada_mkdir() {
 
 # Subscribe to events in dCache folder
 test_ada_events() {
-    command="ada/ada --tokenfile ${token_file} --events test1 /${disk_path}/${dirname}/${testdir} --recursive --api ${api} --timeout 60"
+    command="ada/ada --tokenfile ${token_file} --events test1 /${disk_path}/${dirname}/${testdir} --recursive --api ${api} --timeout 60 --resume --force"
     echo "Running command:"
     echo $command
     eval $command >${stdoutE} 2>${stderrF} &
@@ -45,6 +45,17 @@ test_ada_events() {
     assertTrue "ada could not subscribe to events" $?
 }
 
+# Test error if channelname is already used
+test_ada_events_duplicate_channelname() {
+    command="ada/ada --tokenfile ${token_file} --events test1 /${disk_path}/${dirname}/${testdir} --recursive --api ${api} --timeout 60"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutE} 2>${stderrF}
+    result=$?
+    assertEquals "ada did not return error code 1 as expected" 1 ${result} || return    
+    grep "ERROR" "${stderrF}"
+    assertTrue "ada events did not return ERROR message as expected" $?
+}
 
 # Move a file (created in oneTimeSetUp) to folder created in above test
 test_ada_mv1() {
@@ -263,13 +274,25 @@ test_ada_delete() {
 
 # Subscribe to staging events in dCache folder
 test_ada_report_staged() {
-    command="ada/ada --tokenfile ${token_file} --report-staged test2 /${tape_path}/${dirname} --recursive --api ${api} --timeout 60"
+    command="ada/ada --tokenfile ${token_file} --report-staged test2 /${tape_path}/${dirname} --recursive --api ${api} --timeout 60 --resume --force"
     echo "Running command:"
     echo $command
     eval $command >${stdoutR} 2>${stderrF} &
     sleep 3
     grep "path=/${tape_path}/${dirname}" "${stdoutR}"
     assertTrue "ada could not subscribe to staging events" $?
+}
+
+# Test error if channelname is already used
+test_ada_report_staged_duplicate_channelname() {
+    command="ada/ada --tokenfile ${token_file} --report-staged test2 /${disk_path}/${dirname}/${testdir} --recursive --api ${api} --timeout 60"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutE} 2>${stderrF}
+    result=$?
+    assertEquals "ada did not return error code 1 as expected" 1 ${result} || return    
+    grep "ERROR" "${stderrF}"
+    assertTrue "ada report-staged did not return ERROR message as expected" $?
 }
 
 # Stage a file

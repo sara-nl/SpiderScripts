@@ -7,6 +7,7 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
+# 2025-04-10 - Haili   - Add options --resume and --force to events and report-staged
 # 2025-02-20 - Onno    - Fail early when a token is about to expire
 # 2025-02-18 - Haili   - Read config from <script_dir>/etc/ada.conf (as last option)
 # 2025-01-14 - Onno    - Add support for extended attributes
@@ -180,9 +181,13 @@ usage() {
 	  --unstage --from-file <file-list>
 	      Release files in the list.
 
-	  --events <channel-name> <path-to-follow> [--recursive] [--timeout s]
+	  --events <channel-name> <path-to-follow> [--resume] [--force] [--recursive] [--timeout s]
 	      Subscribe to changes in the given direcory,
 	      using server-sent events (SSE).
+	      If channel name is already in use, you must add --resume
+	      to resume following this channel. 
+	      If the channel name is not stored locally, you must also 
+	      add --force to resume,
 	      When --recursive is added, all subdirectories will be
 	      followed as well, including any new subdirectories
 	      that will be created.
@@ -191,9 +196,13 @@ usage() {
 	      after this timeout. Events that have not been processed
 	      will then be lost.
 
-	  --report-staged <channel-name> <path-to-follow> [--recursive] [--timeout s]
+	  --report-staged <channel-name> <path-to-follow> [--resume] [--force] [--recursive] [--timeout s]
 	      Subscribe to stage (bring online) events in a directory,
 	      using server-sent events (SSE).
+	      If channel name is already in use, you must add --resume
+	      to resume following this channel.
+	      If the channel name is not stored locally, you must also 
+	      add --force to resume,
 	      This command is slightly different from --events:
 	      When you start it, all files in the scope will be listed,
 	      including their locality and QoS. This allows your event
@@ -293,6 +302,7 @@ set_defaults() {
   path=
   recursive=false
   force=false
+  resume=false
 
   # Default options to curl for various activities;
   # these can be overidden in configuration files, see below.
@@ -609,6 +619,10 @@ get_args() {
         force=true
         shift
         ;;
+      --resume )
+        resume=true
+        shift
+        ;;        
       --lifetime )
         arg="$2"
         lifetime=${arg::${#arg} -1}
@@ -2395,6 +2409,7 @@ api_call () {
         exit 1
       fi
       channel=$(get_channel_by_name "$channelname")
+      channel_id=$(basename "$channel")
       if [ "$channel" = "" ] ; then
         # Channel doesn't exist; create it.
         (
@@ -2404,10 +2419,8 @@ api_call () {
                "${curl_options_post[@]}" \
                -X POST "$api/events/channels" -d "{\"client-id\":\"$channelname\"}"
         )
-        channel=$(get_channel_by_name "$channelname")
         # There is no API call to translate channel ID back to
         # channel name. So we keep track of the name ourselves.
-        channel_id=$(basename "$channel")
         echo "$channelname" > "${ada_dir}/channels/channel-name-${channel_id}"
         # Set channel timeout
         (
@@ -2418,6 +2431,14 @@ api_call () {
                -X PATCH "$channel" \
                -d "{\"timeout\": $channel_timeout}"
         )
+      elif ! $resume ; then
+        # Channel already exists; add --resume to continue
+        echo 1>&2 "ERROR: channel name '$channelname' is already used. To resume following this channel, add  --resume."
+        exit 1
+      elif [ ! -f "${ada_dir}/channels/channel-name-${channel_id}" ] && ! $force ; then
+        # Channel already exists but channelname was not saved locally; add --resume and --force to continue      
+        echo 1>&2 "ERROR: channel name '$channelname' is already used but was not saved locally. Add --force if you still want to resume."
+        exit 1
       fi
       echo "Channel: $channel"
       channel_subscribe "$channel" "$path" "$recursive"
