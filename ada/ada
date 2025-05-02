@@ -1344,15 +1344,10 @@ get_checksums () {
   encoded_path=$(urlencode "$path")
   {
     echo -n -e "$path\t"
-    pnfsid=$(get_pnfsid "$path")
-    if [ -z "$pnfsid" ] ; then
-      echo "Could not get pnfsid."
-      return
-    fi
     {
       curl "${curl_authorization[@]}" \
            "${curl_options_no_errors[@]}" \
-           -X GET "$api/id/$pnfsid" \
+           -X GET "$api/namespace/$encoded_path?checksum=true" \
       | jq -r '.checksums | .[] | [ .type , .value ] | @tsv'
       # jq output is tab separated:
       # ADLER32\txxx
