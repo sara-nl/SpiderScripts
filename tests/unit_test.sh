@@ -53,9 +53,9 @@ test_create_path() {
 test_get_pnfsid() {
   result=`get_pnfsid "/test/a/b/c"`
   expected='curl "${curl_authorization[@]}" \
-       "${curl_options_no_errors[@]}" \
-       -X GET "$api/namespace/$path" \
-  | jq -r .pnfsId'
+           "${curl_options_no_errors[@]}" \
+           -X GET "$api/namespace/$path" \
+           | jq -r .pnfsId'
   assertEquals \
       "the result of get_pnfsid() was wrong" \
       "${expected}" "${result}"  
@@ -65,10 +65,10 @@ test_get_pnfsid() {
 test_is_online() {
   result=`is_online "/test/a/b/c"`
   expected='curl "${curl_authorization[@]}" \
-       "${curl_options_no_errors[@]}" \
-       -X GET "$api/namespace/$path?locality=true&qos=true" \
-  | jq -r ".fileLocality" \
-  | grep --silent "ONLINE"'
+           "${curl_options_no_errors[@]}" \
+           -X GET "$api/namespace/$path?locality=true&qos=true" \
+           | jq -r ".fileLocality" \
+           | grep --silent "ONLINE"'
   assertEquals \
       "the result of is_online() was wrong" \
       "${expected}" "${result}"  
@@ -78,9 +78,9 @@ test_is_online() {
 test_get_subdirs() {
   result=`get_subdirs "/test/a/b/c"`
   expected='curl "${curl_authorization[@]}" \
-       "${curl_options_common[@]}" \
-       -X GET "$api/namespace/$path?children=true" \
-  | jq -r "$str"'
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$path?children=true" \
+           | jq -r "$str"'
   assertEquals \
       "the result of get_subdirs() was wrong" \
       "${expected}" "${result}"
@@ -90,9 +90,9 @@ test_get_subdirs() {
 test_get_files_in_dir() {
   result=`get_files_in_dir "/test/a/b/c"`
   expected='curl "${curl_authorization[@]}" \
-       "${curl_options_common[@]}" \
-       -X GET "$api/namespace/$path?children=true" \
-  | jq -r "$str"'
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$path?children=true" \
+           | jq -r "$str"'
   assertEquals \
       "the result of get_files_in_dir() was wrong" \
       "${expected}" "${result}"
@@ -102,9 +102,9 @@ test_get_files_in_dir() {
 test_get_children() {
   result=`get_files_in_dir "/test/a/b/c"`
   expected='curl "${curl_authorization[@]}" \
-       "${curl_options_common[@]}" \
-       -X GET "$api/namespace/$path?children=true" \
-  | jq -r "$str"'
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$path?children=true" \
+           | jq -r "$str"'
   assertEquals \
       "the result of get_files_in_dir() was wrong" \
       "${expected}" "${result}"
