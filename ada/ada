@@ -2096,16 +2096,12 @@ api_call () {
       | sort
       ;;
     stat )
-      pnfsid=$(get_pnfsid "$path")
-      if [ -z "$pnfsid" ] ; then
-        echo 1>&2 "ERROR: could not get file properties."
-        exit 1
-      fi
+      encoded_path=$(urlencode "$path")
       (
         $debug && set -x
         curl "${curl_authorization[@]}" \
              "${curl_options_common[@]}" \
-             -X GET "$api/id/$pnfsid" \
+             -X GET "$api/namespace/$encoded_path?children=true&locality=true&locations=true&qos=true&xattr=true&labels=true&checksum=true&optional=true" \
         | jq .
       )
       ;;
