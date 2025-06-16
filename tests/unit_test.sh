@@ -111,6 +111,15 @@ test_get_children() {
 }
 
 
+test_get_permissions() {
+  result=`get_permissions "${stdoutF}"`
+  expected='-rw-r--r--'  #check if default permission is 744
+  assertEquals \
+      "the result of get_permissions() was wrong" \
+      "${expected}" "${result}"
+}
+
+
 oneTimeSetUp() {
   outputDir="${SHUNIT_TMPDIR}/output"
   mkdir "${outputDir}"
