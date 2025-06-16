@@ -1849,6 +1849,17 @@ validate_input() {
         echo 1>&2 "ERROR: could not open netrc file '$netrcfile'."
         exit 1
       fi
+      # Curl's netrc file shouldn't be world readable or writable!
+      if get_permissions "$netrcfile" | grep '^........w.$' ; then
+        echo 1>&2 "ERROR: Curl's config file '$netrcfile' is world writable." \
+                  "This may be unsafe on shared systems. Use chmod to change the permissions."
+        exit 1
+      fi
+      if get_permissions "$netrcfile" | grep '^.......r..$' ; then
+        echo 1>&2 "ERROR: Curl's config file '$netrcfile' is world readable." \
+                  "This may be unsafe on shared systems. Use chmod to change the permissions."
+        exit 1
+      fi
       ;;
     proxy )
       if [ ! -f "$proxyfile" ] ; then
