@@ -391,7 +391,7 @@ oneTimeSetUp() {
     error=$?
     if [ $error -eq 1 ]; then
         echo "The tests expect a valid macaroon. Please enter your CUA credentials to create one."
-        get-macaroon --url "${webdav_url}"/"${user_path}" --duration P1D --user $user --permissions DOWNLOAD,UPLOAD,DELETE,MANAGE,LIST,READ_METADATA,UPDATE_METADATA --output rclone $(basename "${token_file%.*}")
+        get-macaroon --url "${webdav_url}"/"${user_path}" --duration P1D --user $user --permissions DOWNLOAD,UPLOAD,DELETE,MANAGE,LIST,READ_METADATA,UPDATE_METADATA,STAGE --output rclone $(basename "${token_file%.*}")
         if [ $? -eq 1 ]; then 
             echo "Failed to create a macaroon. Aborting." 
             exit 
