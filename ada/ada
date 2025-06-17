@@ -216,6 +216,9 @@ usage() {
 	      List your existing channels and their properties.
 	      If the channel name is given, list channel(s) with that name.
 
+	  --delete-channel <channel-name>
+	      Delete a channel.
+
 	  --space [poolgroup]
 	      Shows total, free, precious and removable space in a poolgroup.
 	      If no poolgroup is specified, lists all poolgroups.
@@ -647,6 +650,11 @@ get_args() {
         esac
         shift
         ;;
+      --delete-channel )
+        command='delete-channel'     
+        channelname="$2"
+        shift ; shift
+        ;;        
       --space )
         command='space'
         case $2 in
@@ -1940,7 +1948,7 @@ validate_input() {
             exit 1
           fi
           ;;
-        events )
+        events | report-staged )
           if [[ -z $channelname || $channelname =~ ^-- ]] ; then
             echo 1>&2 "ERROR: command $command requires a channel name."
             exit 1
@@ -1958,6 +1966,12 @@ validate_input() {
       if [ -z "$token" ] ; then
         echo 1>&2 "ERROR: command --viewtoken requires a token, but no token was found."
         echo 1>&2 "Please refer to the help text on how to provide a token."
+        exit 1
+      fi
+      ;;
+    delete-channel )
+      if [[ -z $channelname || $channelname =~ ^-- ]] ; then
+        echo 1>&2 "ERROR: command $command requires a channel name."
         exit 1
       fi
       ;;
@@ -2544,6 +2558,22 @@ api_call () {
         | sort -k 2,2 \
         | sed -e 's/^/  /'
       done
+      ;;
+    delete-channel )
+      channel=$(get_channel_by_name "$channelname")
+      channel_id=$(basename "$channel")
+      if [ -z "$channel" ] ; then      
+        # Channel doesn't exist
+        echo "Channel '$channelname' does not exist."
+      else
+        (
+          $debug && set -x
+          curl "${curl_authorization[@]}" \
+               "${curl_options_common[@]}" \
+               "${curl_options_post[@]}" \
+               -X DELETE "$api"/events/channels/"$channel_id"
+        )
+      fi
       ;;
     space )
       if [ -z "$poolgroup" ] ; then
