@@ -7,6 +7,7 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
+# 2025-06-17 - Haili   - Add option --delete-channel to delete a channel by name
 # 2025-04-10 - Haili   - Add options --resume and --force to events and report-staged
 # 2025-02-20 - Onno    - Fail early when a token is about to expire
 # 2025-02-18 - Haili   - Read config from <script_dir>/etc/ada.conf (as last option)
