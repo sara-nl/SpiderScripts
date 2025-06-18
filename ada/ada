@@ -387,7 +387,7 @@ get_args() {
         ;;
       --version )
         git_dir=$(dirname "${script_dir}")
-        _VERSION_PLACEHOLDER=$(git --git-dir=${git_dir}/.git describe --tags --abbrev=0 2>/dev/null || echo "v3.0+")
+        _VERSION_PLACEHOLDER=$(git --git-dir="${git_dir}/.git" describe --tags --abbrev=0 2>/dev/null || echo "v3.0+")
         echo "${_VERSION_PLACEHOLDER}"
         exit 1
         ;;
@@ -1053,7 +1053,7 @@ find_label () {
   recursive="$3"
   encoded_path=$(urlencode "$path")
   # We can only search dirs. Searching a file doesn't make sense, because we have found it.
-  if [[ $(pathtype $path) == "REGULAR" ]] ; then
+  if [[ $(pathtype "$path") == "REGULAR" ]] ; then
     echo 1>&2 "ERROR: $path is a file. Please specify a directory."
     exit 1
   fi
@@ -1181,7 +1181,7 @@ create_path () {
   if [ $error == 1 ] && $recursive ; then
     if [ "${#parent}" -gt 1 ]; then
       echo 1>&2 "Warning: parent dir '$parent' does not exist. Will atempt to create it."
-      create_path $parent $recursive
+      create_path "$parent" "$recursive"
     else
       echo 1>&2 "ERROR: Unable to create dirs. Check the specified path."
       exit 1
@@ -1339,9 +1339,11 @@ bulk_request() {
     | grep -e request-url -e Date | tee -a "${requests_log}"
   )
   $debug && echo "Information about bulk request is logged in $requests_log."
-  echo "activity: $activity" >> $requests_log
-  echo "target: $target" | sed 's/,/,\n         /g' >> $requests_log
-  echo " " >> $requests_log
+  {
+    echo "activity: $activity"
+    echo "target: $target" | sed 's/,/,\n         /g'
+    echo
+  } >> $requests_log
 }
 
 
@@ -1841,7 +1843,7 @@ validate_input() {
           echo 1>&2 "ERROR: could not read token from tokenfile."
           exit 1
         fi
-      elif ! [ -n "$token" ] ; then
+      elif [ -z "$token" ] ; then
         echo 1>&2 "ERROR: no tokenfile, nor variable BEARER_TOKEN specified."
         exit 1
       fi
@@ -2172,7 +2174,7 @@ api_call () {
       )
       ;;
     mkdir )
-      create_path $path $recursive
+      create_path "$path" "$recursive"
       ;;
     mv )
       # dCache may overwrite an empty directory.
@@ -2333,7 +2335,7 @@ api_call () {
       encoded_path=$(urlencode "$path")
       case $command in
         setxattr )
-          attributes=$(cat $xattr_file)
+          attributes=$(cat "$xattr_file")
           xattr_json=$(to_json "$attributes") || exit 1
           echo "$xattr_json"
           (
