@@ -309,7 +309,7 @@ set_defaults() {
   resume=false
 
   # Default options to curl for various activities;
-  # these can be overidden in configuration files, see below.
+  # these can be overridden in configuration files, see below.
   # Don't override them unless you know what you're doing.
   curl_options_common=(
                         -H "accept: application/json"
@@ -966,9 +966,9 @@ pathtype () {
 get_pnfsid () {
   local path=$(urlencode "$1")
   command='curl "${curl_authorization[@]}" \
-       "${curl_options_no_errors[@]}" \
-       -X GET "$api/namespace/$path" \
-  | jq -r .pnfsId'
+           "${curl_options_no_errors[@]}" \
+           -X GET "$api/namespace/$path" \
+           | jq -r .pnfsId'
   if $dry_run ; then
     echo "$command"
   else
@@ -982,10 +982,10 @@ is_online () {
   # The locality should be ONLINE or ONLINE_AND_NEARLINE.
   local path=$(urlencode "$1")
   command='curl "${curl_authorization[@]}" \
-       "${curl_options_no_errors[@]}" \
-       -X GET "$api/namespace/$path?locality=true&qos=true" \
-  | jq -r ".fileLocality" \
-  | grep --silent "ONLINE"'
+           "${curl_options_no_errors[@]}" \
+           -X GET "$api/namespace/$path?locality=true&qos=true" \
+           | jq -r ".fileLocality" \
+           | grep --silent "ONLINE"'
   if $dry_run ; then
     echo "$command"
   else
@@ -998,9 +998,9 @@ get_subdirs () {
   local path=$(urlencode "$1")
   str='.children | .[] | if .fileType == "DIR" then .fileName else empty end'
   command='curl "${curl_authorization[@]}" \
-       "${curl_options_common[@]}" \
-       -X GET "$api/namespace/$path?children=true" \
-  | jq -r "$str"'
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$path?children=true" \
+           | jq -r "$str"'
   if $dry_run ; then
     echo "$command"
   else
@@ -1013,9 +1013,9 @@ get_files_in_dir () {
   local path=$(urlencode "$1")
   str='.children | .[] | if .fileType == "REGULAR" then .fileName else empty end'
   command='curl "${curl_authorization[@]}" \
-       "${curl_options_common[@]}" \
-       -X GET "$api/namespace/$path?children=true" \
-  | jq -r "$str"'
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$path?children=true" \
+           | jq -r "$str"'
   if $dry_run ; then
     echo "$command"
   else
@@ -1027,9 +1027,9 @@ get_files_in_dir () {
 get_children () {
   local path=$(urlencode "$1")
   command='curl "${curl_authorization[@]}" \
-       "${curl_options_common[@]}" \
-       -X GET "$api/namespace/$path?children=true" \
-  | jq -r ".children | .[] | .fileName"'
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$path?children=true" \
+           | jq -r ".children | .[] | .fileName"'
   if $dry_run ; then
     echo "$command"
   else
@@ -1490,8 +1490,8 @@ list_subscription () {
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
          -X GET "$subscription" \
-  | jq -r 'to_entries[] | [.key, .value] | @tsv' \
-  | tr '\t' '='
+    | jq -r 'to_entries[] | [.key, .value] | @tsv' \
+    | tr '\t' '='
   )
 }
 
@@ -2072,7 +2072,7 @@ api_call () {
         curl "${curl_authorization[@]}" \
              "${curl_options_common[@]}" \
              -X GET "$api/user" \
-      | jq .
+        | jq .
       )
       ;;
     list )
@@ -2258,9 +2258,9 @@ api_call () {
               labels=$(
                         $debug && set -x   # If --debug is specified, show curl & jq command
                         curl "${curl_authorization[@]}" \
-                        "${curl_options_common[@]}" \
-                        "${curl_options_post[@]}" \
-                        -X GET "$api/namespace/$encoded_path?labels=true" \
+                             "${curl_options_common[@]}" \
+                             "${curl_options_post[@]}" \
+                             -X GET "$api/namespace/$encoded_path?labels=true" \
                         | jq -r '.labels[]'
                       )
               if [ "$labels" == "" ] ; then
@@ -2352,9 +2352,9 @@ api_call () {
           attributes=$(
                         $debug && set -x   # If --debug is specified, show curl command
                         curl "${curl_authorization[@]}" \
-                        "${curl_options_common[@]}" \
-                        "${curl_options_post[@]}" \
-                        -X GET "$api/namespace/$encoded_path?xattr=true"
+                             "${curl_options_common[@]}" \
+                             "${curl_options_post[@]}" \
+                             -X GET "$api/namespace/$encoded_path?xattr=true"
                       )
           if [ -n "$attribute_name"  ] ; then
             attribute_value=$(echo "$attributes" | jq ".extendedAttributes.$attribute_name")
@@ -2375,9 +2375,9 @@ api_call () {
               names_json=$(
                             $debug && set -x   # If --debug is specified, show curl & jq command
                             curl "${curl_authorization[@]}" \
-                            "${curl_options_common[@]}" \
-                            "${curl_options_post[@]}" \
-                            -X GET "$api/namespace/$encoded_path?xattr=true" \
+                                 "${curl_options_common[@]}" \
+                                 "${curl_options_post[@]}" \
+                                 -X GET "$api/namespace/$encoded_path?xattr=true" \
                             | jq --compact-output '.extendedAttributes | keys'
                           )
               if [ "$names_json" == "[]" ] ; then
@@ -2534,11 +2534,11 @@ api_call () {
         fi
         # Show channel properties (for now only the timeout)
         channel_properties=$(
-           curl "${curl_authorization[@]}" \
-                "${curl_options_common[@]}" \
-                -X GET "$channel" \
-           | jq -r 'to_entries[] | [.key, .value] | @tsv' \
-           | tr '\t' '='
+          curl "${curl_authorization[@]}" \
+               "${curl_options_common[@]}" \
+               -X GET "$channel" \
+          | jq -r 'to_entries[] | [.key, .value] | @tsv' \
+          | tr '\t' '='
         )
         # Show event ID, if available
         channel_status_file="${ada_dir}/channels/channel-status-${channel_id}"
