@@ -971,6 +971,82 @@ check_authentication() {
 }
 
 
+get_webdav_door () {
+  # The dCache API itself does not allow uploading and downloading
+  # of data. We need a WebDAV door for that.
+  # A properly configured API can redirect us to a WebDAV door,
+  # which we can use for uploading and downloading data.
+  # This function will return the WebDAV door.
+  local api="$1"
+  local api_server="${api%/api/v*}"
+  local webdav_door
+  local command
+  command='$debug && set -x
+           curl "${curl_authorization[@]}" \
+                "${curl_options_common[@]}" \
+                -H "Authorization: bearer $BEARER_TOKEN" \
+                -H "Accept: application/json" \
+                "$api_server/scripts/config.js" \
+           | jq -r ".\"dcache-view.endpoints.webdav\"" '
+  if $dry_run ; then
+    echo "$command"
+  else
+    $debug && echo "Getting WebDAV door from $api_server/scripts/config.js ..."
+    webdav_door=$(eval "$command")
+  fi
+  # If we got a WebDAV door, we're done! Print value and return.
+  if [ -n "$webdav_door" ] ; then
+    echo "$webdav_door"
+    return 0
+  fi
+  $debug && echo "Method failed. Trying next method."
+  # If the first method failed, we try a backup method.
+  # This uses the /doors API call, which lists all doors.
+  # The list of doors can be quite long.
+  # From the list, we select the most appropriate.
+  # The door should have:
+  # - protocol https (this excludes xrootd and gridftp)
+  # - all paths: / (root path; we don't want a door that confines us)
+  # - a lot of tags (which means it's publically advertised)
+  # - port 443 is preferred (reduces firewall issues)
+  # - a low load (we don't want a busy door)
+  command='$debug && set -x
+           curl "${curl_authorization[@]}" \
+                "${curl_options_common[@]}" \
+                -H "Accept: application/json" \
+                -X GET "$api/doors" \
+           | jq -r "
+               map(select(
+                   .protocol == \"https\" and
+                   .root == \"/\" and
+                   ((.readPaths // []) | index(\"/\")) and
+                   ((.writePaths // []) | index(\"/\"))
+               ))
+               | sort_by(
+                   -((.tags // []) | length),     # prefer doors with more tags
+                   (.port != 443),                # prefer port 443
+                   .load                          # prefer lower load
+               )
+               | .[0] as \$best
+               | \"\(\$best.protocol)://\(\$best.addresses[0]):\(\$best.port)\"
+             "
+  '
+  if $dry_run ; then
+    echo "$command"
+  else
+    $debug && echo "Getting WebDAV door from $api/doors ..."
+    webdav_door=$(eval "$command")
+  fi
+  # If we got a WebDAV door, we're done! Print value and return.
+  if [ -n "$webdav_door" ] ; then
+    echo "$webdav_door"
+    return 0
+  else
+    return 1
+  fi
+}
+
+
 urlencode () {
   # We use jq for encoding the URL, because we need jq anyway.
   $debug && echo "urlencoding '$1' to '$(printf '%s' "$1" | jq -sRr @uri)'" 1>&2
