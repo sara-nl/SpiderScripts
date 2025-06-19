@@ -34,6 +34,29 @@ test_ada_mkdir() {
     assertTrue "could not get locality" $?
 }
 
+
+# List channels
+test_ada_channels() {
+    command="ada/ada --tokenfile ${token_file} --channels test1 --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    if [[ -z $(grep '[^[:space:]]' $stdoutF) ]] ; then
+        echo "Channel test1 does not exist yet, creating it."
+        command="ada/ada --tokenfile ${token_file} --events test1 /${disk_path}/${dirname}/${testdir} --recursive --api ${api} --timeout 60"
+        eval $command >${stdoutE} 2>${stderrF} &
+        sleep 3
+        #check if the channel has been created
+        command="ada/ada --tokenfile ${token_file} --channels test1 --api ${api}"
+        eval $command >${stdoutF} 2>${stderrF}
+        if [[ -z $(grep '[^[:space:]]' $stdoutF) ]] ; then
+            assertTrue "Unable to create channel" 1
+        fi
+    fi
+}
+
 # Subscribe to events in dCache folder
 test_ada_events() {
     command="ada/ada --tokenfile ${token_file} --events test1 /${disk_path}/${dirname}/${testdir} --recursive --api ${api} --timeout 60 --resume --force"
@@ -41,7 +64,7 @@ test_ada_events() {
     echo $command
     eval $command >${stdoutE} 2>${stderrF} &
     sleep 3
-    grep "path=/${disk_path}/${dirname}/${testdir}" "${stdoutE}"
+    grep "path=/${disk_path}/${dirname}/${testdir}" "${stdoutE}" >/dev/null
     assertTrue "ada could not subscribe to events" $?
 }
 
@@ -53,7 +76,7 @@ test_ada_events_duplicate_channelname() {
     eval $command >${stdoutE} 2>${stderrF}
     result=$?
     assertEquals "ada did not return error code 1 as expected" 1 ${result} || return    
-    grep "ERROR" "${stderrF}"
+    grep "ERROR" "${stderrF}" >/dev/null
     assertTrue "ada events did not return ERROR message as expected" $?
 }
 
@@ -279,7 +302,7 @@ test_ada_report_staged() {
     echo $command
     eval $command >${stdoutR} 2>${stderrF} &
     sleep 3
-    grep "path=/${tape_path}/${dirname}" "${stdoutR}"
+    grep "path=/${tape_path}/${dirname}" "${stdoutR}" >/dev/null
     assertTrue "ada could not subscribe to staging events" $?
 }
 
@@ -291,9 +314,30 @@ test_ada_report_staged_duplicate_channelname() {
     eval $command >${stdoutE} 2>${stderrF}
     result=$?
     assertEquals "ada did not return error code 1 as expected" 1 ${result} || return    
-    grep "ERROR" "${stderrF}"
+    grep "ERROR" "${stderrF}" >/dev/null
     assertTrue "ada report-staged did not return ERROR message as expected" $?
 }
+
+# Delete channels
+test_ada_delete_channels() {
+    for channelname in test1 test2; do    
+        command="ada/ada --tokenfile ${token_file} --delete-channel ${channelname} --api ${api}"
+        echo "Running command:"
+        echo $command
+        eval $command
+        result=$?
+        assertEquals "ada returned error code ${result}" 0 ${result} || return
+        #check if the channel has been deleted
+        command="ada/ada --tokenfile ${token_file} --channels ${channelname} --api ${api}"
+        eval $command >${stdoutF} 2>${stderrF}
+        if [[ -z $(grep '[^[:space:]]' $stdoutF) ]] ; then
+            echo "Channel ${channelname} has been deleted"
+        else
+            assertTrue "Unable to delete channel ${channelname}"  1    
+        fi
+    done
+}
+
 
 # Stage a file
 test_ada_stage_file() {
@@ -391,7 +435,7 @@ oneTimeSetUp() {
     error=$?
     if [ $error -eq 1 ]; then
         echo "The tests expect a valid macaroon. Please enter your CUA credentials to create one."
-        get-macaroon --url "${webdav_url}"/"${user_path}" --duration P1D --user $user --permissions DOWNLOAD,UPLOAD,DELETE,MANAGE,LIST,READ_METADATA,UPDATE_METADATA --output rclone $(basename "${token_file%.*}")
+        get-macaroon --url "${webdav_url}"/"${user_path}" --duration P1D --user $user --permissions DOWNLOAD,UPLOAD,DELETE,MANAGE,LIST,READ_METADATA,UPDATE_METADATA,STAGE --output rclone $(basename "${token_file%.*}")
         if [ $? -eq 1 ]; then 
             echo "Failed to create a macaroon. Aborting." 
             exit 

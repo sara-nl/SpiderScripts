@@ -7,6 +7,7 @@
 # Latest version is available at: https://github.com/sara-nl/SpiderScripts
 #
 # Changes:
+# 2025-06-17 - Haili   - Add option --delete-channel to delete a channel by name
 # 2025-04-10 - Haili   - Add options --resume and --force to events and report-staged
 # 2025-02-20 - Onno    - Fail early when a token is about to expire
 # 2025-02-18 - Haili   - Read config from <script_dir>/etc/ada.conf (as last option)
@@ -216,6 +217,9 @@ usage() {
 	      List your existing channels and their properties.
 	      If the channel name is given, list channel(s) with that name.
 
+	  --delete-channel <channel-name>
+	      Delete a channel.
+
 	  --space [poolgroup]
 	      Shows total, free, precious and removable space in a poolgroup.
 	      If no poolgroup is specified, lists all poolgroups.
@@ -305,7 +309,7 @@ set_defaults() {
   resume=false
 
   # Default options to curl for various activities;
-  # these can be overidden in configuration files, see below.
+  # these can be overridden in configuration files, see below.
   # Don't override them unless you know what you're doing.
   curl_options_common=(
                         -H "accept: application/json"
@@ -383,7 +387,7 @@ get_args() {
         ;;
       --version )
         git_dir=$(dirname "${script_dir}")
-        _VERSION_PLACEHOLDER=$(git --git-dir=${git_dir}/.git describe --tags --abbrev=0 2>/dev/null || echo "v3.0+")
+        _VERSION_PLACEHOLDER=$(git --git-dir="${git_dir}/.git" describe --tags --abbrev=0 2>/dev/null || echo "v3.0+")
         echo "${_VERSION_PLACEHOLDER}"
         exit 1
         ;;
@@ -647,6 +651,11 @@ get_args() {
         esac
         shift
         ;;
+      --delete-channel )
+        command='delete-channel'     
+        channelname="$2"
+        shift ; shift
+        ;;        
       --space )
         command='space'
         case $2 in
@@ -781,6 +790,7 @@ validate_expiration_timestamp () {
 check_token() {
   local token="$1"
   local token_debug_info="$2"
+  local command="$3"
 
   # Determine token type (JWT or Macaroon)
   if [[ "$token" =~ ^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$ ]]; then
@@ -800,6 +810,31 @@ check_token() {
 
     # Fail if the token has (almost) expired
     validate_expiration_timestamp "$exp_unix" "$token_debug_info" || return 1
+
+    # If we're staging, the token must have storage.stage permission,
+    # or no storage.* claims at all.
+    # As of dCache 10.1, this is required.
+    if [[ "$command" == 'stage' ]] ; then
+      # For dCache, there are 2 kinds of OIDC tokens: those with storage.* claims,
+      # and those without any storage.* claims.
+      # If there is no storage.* claim at all, dCache will just assume
+      # everything is allowed.
+      # If there is at least one storage.* claim, dCache will check if the storage.* claims
+      # are sufficient for the job.
+      # So, we check if there is any storage claim.
+      oidc_scope=$(echo "$payload" | jq -r '.scope' 2>/dev/null)
+      if grep --silent 'storage\.' <<<"$oidc_scope" ; then
+        # Yes, there is a storage claim.
+        # This means we need storage.stage to be allowed to stage!
+        if ! grep --silent 'storage\.stage' <<<"$oidc_scope" ; then
+          echo 1>&2 "ERROR: You want to stage data from tape, but your OIDC token" \
+                    "does not have the storage.stage permission in its scope." \
+                    "You can check this with the --viewtoken option." \
+                    "Please use an OIDC token with 'storage.stage' in its scope."
+          return 1
+        fi
+      fi
+    fi
 
     # If we get here, it means we have a valid OIDC token.
     $debug && echo "$payload" | jq '. | .exp |= todate | .nbf |= todate | .iat |= todate'
@@ -848,6 +883,18 @@ check_token() {
 
     # Fail if the token has (almost) expired
     validate_expiration_timestamp "$exp_unix" "$token_debug_info" || return 1
+
+    # If we're staging, the macaroon must have STAGE activity permission.
+    # As of dCache 10.1, the STAGE activity is required for staging with a macaroon.
+    if [[ "$command" == 'stage' ]] ; then
+      if ! grep --silent 'activity:.*STAGE' <<<"$macaroon_decoded" ; then
+        echo 1>&2 "ERROR: You want to stage data from tape, but your macaroon token" \
+                  "does not have the STAGE activity permission." \
+                  "You can check this with the --viewtoken option." \
+                  "Please use a macaroon with the STAGE activity permission."
+        return 1
+      fi
+    fi
 
     # If we get here, it means we have a valid macaroon.
     $debug && echo -e "\033[34m\n$macaroon_decoded\n\033[0m" | sed -e 's/^/  /'
@@ -966,9 +1013,9 @@ pathtype () {
 get_pnfsid () {
   local path=$(urlencode "$1")
   command='curl "${curl_authorization[@]}" \
-       "${curl_options_no_errors[@]}" \
-       -X GET "$api/namespace/$path" \
-  | jq -r .pnfsId'
+           "${curl_options_no_errors[@]}" \
+           -X GET "$api/namespace/$path" \
+           | jq -r .pnfsId'
   if $dry_run ; then
     echo "$command"
   else
@@ -982,10 +1029,10 @@ is_online () {
   # The locality should be ONLINE or ONLINE_AND_NEARLINE.
   local path=$(urlencode "$1")
   command='curl "${curl_authorization[@]}" \
-       "${curl_options_no_errors[@]}" \
-       -X GET "$api/namespace/$path?locality=true&qos=true" \
-  | jq -r ".fileLocality" \
-  | grep --silent "ONLINE"'
+           "${curl_options_no_errors[@]}" \
+           -X GET "$api/namespace/$path?locality=true&qos=true" \
+           | jq -r ".fileLocality" \
+           | grep --silent "ONLINE"'
   if $dry_run ; then
     echo "$command"
   else
@@ -998,9 +1045,9 @@ get_subdirs () {
   local path=$(urlencode "$1")
   str='.children | .[] | if .fileType == "DIR" then .fileName else empty end'
   command='curl "${curl_authorization[@]}" \
-       "${curl_options_common[@]}" \
-       -X GET "$api/namespace/$path?children=true" \
-  | jq -r "$str"'
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$path?children=true" \
+           | jq -r "$str"'
   if $dry_run ; then
     echo "$command"
   else
@@ -1013,9 +1060,9 @@ get_files_in_dir () {
   local path=$(urlencode "$1")
   str='.children | .[] | if .fileType == "REGULAR" then .fileName else empty end'
   command='curl "${curl_authorization[@]}" \
-       "${curl_options_common[@]}" \
-       -X GET "$api/namespace/$path?children=true" \
-  | jq -r "$str"'
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$path?children=true" \
+           | jq -r "$str"'
   if $dry_run ; then
     echo "$command"
   else
@@ -1027,9 +1074,9 @@ get_files_in_dir () {
 get_children () {
   local path=$(urlencode "$1")
   command='curl "${curl_authorization[@]}" \
-       "${curl_options_common[@]}" \
-       -X GET "$api/namespace/$path?children=true" \
-  | jq -r ".children | .[] | .fileName"'
+           "${curl_options_common[@]}" \
+           -X GET "$api/namespace/$path?children=true" \
+           | jq -r ".children | .[] | .fileName"'
   if $dry_run ; then
     echo "$command"
   else
@@ -1053,7 +1100,7 @@ find_label () {
   recursive="$3"
   encoded_path=$(urlencode "$path")
   # We can only search dirs. Searching a file doesn't make sense, because we have found it.
-  if [[ $(pathtype $path) == "REGULAR" ]] ; then
+  if [[ $(pathtype "$path") == "REGULAR" ]] ; then
     echo 1>&2 "ERROR: $path is a file. Please specify a directory."
     exit 1
   fi
@@ -1181,7 +1228,7 @@ create_path () {
   if [ $error == 1 ] && $recursive ; then
     if [ "${#parent}" -gt 1 ]; then
       echo 1>&2 "Warning: parent dir '$parent' does not exist. Will atempt to create it."
-      create_path $parent $recursive
+      create_path "$parent" "$recursive"
     else
       echo 1>&2 "ERROR: Unable to create dirs. Check the specified path."
       exit 1
@@ -1339,9 +1386,11 @@ bulk_request() {
     | grep -e request-url -e Date | tee -a "${requests_log}"
   )
   $debug && echo "Information about bulk request is logged in $requests_log."
-  echo "activity: $activity" >> $requests_log
-  echo "target: $target" | sed 's/,/,\n         /g' >> $requests_log
-  echo " " >> $requests_log
+  {
+    echo "activity: $activity"
+    echo "target: $target" | sed 's/,/,\n         /g'
+    echo
+  } >> $requests_log
 }
 
 
@@ -1391,15 +1440,10 @@ get_checksums () {
   encoded_path=$(urlencode "$path")
   {
     echo -n -e "$path\t"
-    pnfsid=$(get_pnfsid "$path")
-    if [ -z "$pnfsid" ] ; then
-      echo "Could not get pnfsid."
-      return
-    fi
     {
       curl "${curl_authorization[@]}" \
            "${curl_options_no_errors[@]}" \
-           -X GET "$api/id/$pnfsid" \
+           -X GET "$api/namespace/$encoded_path?checksum=true" \
       | jq -r '.checksums | .[] | [ .type , .value ] | @tsv'
       # jq output is tab separated:
       # ADLER32\txxx
@@ -1493,8 +1537,8 @@ list_subscription () {
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
          -X GET "$subscription" \
-  | jq -r 'to_entries[] | [.key, .value] | @tsv' \
-  | tr '\t' '='
+    | jq -r 'to_entries[] | [.key, .value] | @tsv' \
+    | tr '\t' '='
   )
 }
 
@@ -1846,19 +1890,32 @@ validate_input() {
           echo 1>&2 "ERROR: could not read token from tokenfile."
           exit 1
         fi
-      elif ! [ -n "$token" ] ; then
+      elif [ -z "$token" ] ; then
         echo 1>&2 "ERROR: no tokenfile, nor variable BEARER_TOKEN specified."
         exit 1
       fi
       # Token should be valid - unless we want to view the token!
       # We should be able to view also invalid tokens (to check what's wrong with them).
       if [[ $command != 'viewtoken' ]] ; then
-        check_token "$token" "$token_debug_info" || exit 1
+        # We also send the command, so we can check if the token
+        # has the necessary permissions for the job.
+        check_token "$token" "$token_debug_info" "$command" || exit 1
       fi
       ;;
     netrc )
       if [ ! -f "$netrcfile" ] ; then
         echo 1>&2 "ERROR: could not open netrc file '$netrcfile'."
+        exit 1
+      fi
+      # Curl's netrc file shouldn't be world readable or writable!
+      if get_permissions "$netrcfile" | grep '^........w.$' ; then
+        echo 1>&2 "ERROR: Curl's config file '$netrcfile' is world writable." \
+                  "This may be unsafe on shared systems. Use chmod to change the permissions."
+        exit 1
+      fi
+      if get_permissions "$netrcfile" | grep '^.......r..$' ; then
+        echo 1>&2 "ERROR: Curl's config file '$netrcfile' is world readable." \
+                  "This may be unsafe on shared systems. Use chmod to change the permissions."
         exit 1
       fi
       ;;
@@ -1941,7 +1998,7 @@ validate_input() {
             exit 1
           fi
           ;;
-        events )
+        events | report-staged )
           if [[ -z $channelname || $channelname =~ ^-- ]] ; then
             echo 1>&2 "ERROR: command $command requires a channel name."
             exit 1
@@ -1959,6 +2016,12 @@ validate_input() {
       if [ -z "$token" ] ; then
         echo 1>&2 "ERROR: command --viewtoken requires a token, but no token was found."
         echo 1>&2 "Please refer to the help text on how to provide a token."
+        exit 1
+      fi
+      ;;
+    delete-channel )
+      if [[ -z $channelname || $channelname =~ ^-- ]] ; then
+        echo 1>&2 "ERROR: command $command requires a channel name."
         exit 1
       fi
       ;;
@@ -2056,7 +2119,7 @@ api_call () {
         curl "${curl_authorization[@]}" \
              "${curl_options_common[@]}" \
              -X GET "$api/user" \
-      | jq .
+        | jq .
       )
       ;;
     list )
@@ -2148,21 +2211,17 @@ api_call () {
       | sort
       ;;
     stat )
-      pnfsid=$(get_pnfsid "$path")
-      if [ -z "$pnfsid" ] ; then
-        echo 1>&2 "ERROR: could not get file properties."
-        exit 1
-      fi
+      encoded_path=$(urlencode "$path")
       (
         $debug && set -x
         curl "${curl_authorization[@]}" \
              "${curl_options_common[@]}" \
-             -X GET "$api/id/$pnfsid" \
+             -X GET "$api/namespace/$encoded_path?children=true&locality=true&locations=true&qos=true&xattr=true&labels=true&checksum=true&optional=true" \
         | jq .
       )
       ;;
     mkdir )
-      create_path $path $recursive
+      create_path "$path" "$recursive"
       ;;
     mv )
       # dCache may overwrite an empty directory.
@@ -2246,9 +2305,9 @@ api_call () {
               labels=$(
                         $debug && set -x   # If --debug is specified, show curl & jq command
                         curl "${curl_authorization[@]}" \
-                        "${curl_options_common[@]}" \
-                        "${curl_options_post[@]}" \
-                        -X GET "$api/namespace/$encoded_path?labels=true" \
+                             "${curl_options_common[@]}" \
+                             "${curl_options_post[@]}" \
+                             -X GET "$api/namespace/$encoded_path?labels=true" \
                         | jq -r '.labels[]'
                       )
               if [ "$labels" == "" ] ; then
@@ -2323,7 +2382,7 @@ api_call () {
       encoded_path=$(urlencode "$path")
       case $command in
         setxattr )
-          attributes=$(cat $xattr_file)
+          attributes=$(cat "$xattr_file")
           xattr_json=$(to_json "$attributes") || exit 1
           echo "$xattr_json"
           (
@@ -2340,9 +2399,9 @@ api_call () {
           attributes=$(
                         $debug && set -x   # If --debug is specified, show curl command
                         curl "${curl_authorization[@]}" \
-                        "${curl_options_common[@]}" \
-                        "${curl_options_post[@]}" \
-                        -X GET "$api/namespace/$encoded_path?xattr=true"
+                             "${curl_options_common[@]}" \
+                             "${curl_options_post[@]}" \
+                             -X GET "$api/namespace/$encoded_path?xattr=true"
                       )
           if [ -n "$attribute_name"  ] ; then
             attribute_value=$(echo "$attributes" | jq ".extendedAttributes.$attribute_name")
@@ -2363,9 +2422,9 @@ api_call () {
               names_json=$(
                             $debug && set -x   # If --debug is specified, show curl & jq command
                             curl "${curl_authorization[@]}" \
-                            "${curl_options_common[@]}" \
-                            "${curl_options_post[@]}" \
-                            -X GET "$api/namespace/$encoded_path?xattr=true" \
+                                 "${curl_options_common[@]}" \
+                                 "${curl_options_post[@]}" \
+                                 -X GET "$api/namespace/$encoded_path?xattr=true" \
                             | jq --compact-output '.extendedAttributes | keys'
                           )
               if [ "$names_json" == "[]" ] ; then
@@ -2522,11 +2581,11 @@ api_call () {
         fi
         # Show channel properties (for now only the timeout)
         channel_properties=$(
-           curl "${curl_authorization[@]}" \
-                "${curl_options_common[@]}" \
-                -X GET "$channel" \
-           | jq -r 'to_entries[] | [.key, .value] | @tsv' \
-           | tr '\t' '='
+          curl "${curl_authorization[@]}" \
+               "${curl_options_common[@]}" \
+               -X GET "$channel" \
+          | jq -r 'to_entries[] | [.key, .value] | @tsv' \
+          | tr '\t' '='
         )
         # Show event ID, if available
         channel_status_file="${ada_dir}/channels/channel-status-${channel_id}"
@@ -2549,6 +2608,22 @@ api_call () {
         | sort -k 2,2 \
         | sed -e 's/^/  /'
       done
+      ;;
+    delete-channel )
+      channel=$(get_channel_by_name "$channelname")
+      channel_id=$(basename "$channel")
+      if [ -z "$channel" ] ; then      
+        # Channel doesn't exist
+        echo "Channel '$channelname' does not exist."
+      else
+        (
+          $debug && set -x
+          curl "${curl_authorization[@]}" \
+               "${curl_options_common[@]}" \
+               "${curl_options_post[@]}" \
+               -X DELETE "$api"/events/channels/"$channel_id"
+        )
+      fi
       ;;
     space )
       if [ -z "$poolgroup" ] ; then
