@@ -924,6 +924,53 @@ setup_dirs () {
 }
 
 
+check_authentication() {
+  # Returns whether the user is properly authenticated by dCache.
+  # If we check this before doing any API operation, we can provide a better error message.
+  local command
+  command='$debug && set -x
+           curl "${curl_authorization[@]}" \
+           "${curl_options_common[@]}" \
+           -X GET "$api/user" \
+           | jq -r .status '
+  if $dry_run ; then
+    echo "$command"
+    return 0
+  fi
+  userinfo=$(eval "$command")
+  if grep --silent 'AUTHENTICATED' <<<"$userinfo" ; then
+    $debug && echo "Authenticated."
+    return 0
+  fi
+  #
+  echo "ERROR: authentication failed. Please check your credentials."
+  echo
+  echo "API: $api"
+  # Show path, if set.
+  # The path may provide useful info, such as the service name
+  # in for example "/pnfs/grid.sara.nl/data"
+  if [ -n "$path" ] ; then
+    echo "Path: $path"
+  fi
+  echo "Authentication method: $auth_method"
+  case $auth_method in
+    netrc )
+      echo "Netrc file: $netrcfile"
+      ;;
+    proxy )
+      echo "Proxy file: $proxyfile"
+      ;;
+    token )
+      view_token "$token" "$token_debug_info"
+      ;;
+    * )
+      echo "Unknown authentication method '$auth_method'."
+      ;;
+  esac
+  return 1
+}
+
+
 urlencode () {
   # We use jq for encoding the URL, because we need jq anyway.
   $debug && echo "urlencoding '$1' to '$(printf '%s' "$1" | jq -sRr @uri)'" 1>&2
@@ -2050,6 +2097,12 @@ construct_auth() {
       fi
       ;;
   esac
+  # Let's check whether we can successfully authenticate.
+  # Except when we want to view a token!
+  # The token may be viewed even if it is invalid.
+  if [[ "$command" != "viewtoken" ]] ; then
+    check_authentication || exit 1
+  fi
 }
 # End construct_auth()
 

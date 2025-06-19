@@ -120,6 +120,19 @@ test_get_permissions() {
 }
 
 
+test_check_authentication() {
+  result=`check_authentication`
+  expected='$debug && set -x
+           curl "${curl_authorization[@]}" \
+           "${curl_options_common[@]}" \
+           -X GET "$api/user" \
+           | jq -r .status '
+  assertEquals \
+      "the result of check_authentication() was wrong" \
+      "${expected}" "${result}"
+}
+
+
 oneTimeSetUp() {
   outputDir="${SHUNIT_TMPDIR}/output"
   mkdir "${outputDir}"

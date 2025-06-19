@@ -37,24 +37,26 @@ test_ada_mkdir() {
 
 # List channels
 test_ada_channels() {
-    command="ada/ada --tokenfile ${token_file} --channels test1 --api ${api}"
-    echo "Running command:"
-    echo $command
-    eval $command >${stdoutF} 2>${stderrF}
-    result=$?
-    assertEquals "ada returned error code ${result}" 0 ${result} || return
-    if [[ -z $(grep '[^[:space:]]' $stdoutF) ]] ; then
-        echo "Channel test1 does not exist yet, creating it."
-        command="ada/ada --tokenfile ${token_file} --events test1 /${disk_path}/${dirname}/${testdir} --recursive --api ${api} --timeout 60"
-        eval $command >${stdoutE} 2>${stderrF} &
-        sleep 3
-        #check if the channel has been created
-        command="ada/ada --tokenfile ${token_file} --channels test1 --api ${api}"
+    for channelname in test1 test2; do    
+        command="ada/ada --tokenfile ${token_file} --channels ${channelname} --api ${api}"
+        echo "Running command:"
+        echo $command
         eval $command >${stdoutF} 2>${stderrF}
+        result=$?
+        assertEquals "ada returned error code ${result}" 0 ${result} || return
         if [[ -z $(grep '[^[:space:]]' $stdoutF) ]] ; then
-            assertTrue "Unable to create channel" 1
+            echo "Channel ${channelname} does not exist yet, creating it."
+            command="ada/ada --tokenfile ${token_file} --events ${channelname} /${disk_path}/${dirname}/${testdir} --recursive --api ${api} --timeout 60"
+            eval $command >${stdoutE} 2>${stderrF} &
+            sleep 3
+            #check if the channel has been created
+            command="ada/ada --tokenfile ${token_file} --channels ${channelname} --api ${api}"
+            eval $command >${stdoutF} 2>${stderrF}
+            if [[ -z $(grep '[^[:space:]]' $stdoutF) ]] ; then
+                assertTrue "Unable to create channel ${channelname}" 1
+            fi
         fi
-    fi
+    done
 }
 
 # Subscribe to events in dCache folder
