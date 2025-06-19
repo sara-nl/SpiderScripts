@@ -2471,13 +2471,25 @@ api_call () {
       channel_id=$(basename "$channel")
       if [ "$channel" = "" ] ; then
         # Channel doesn't exist; create it.
-        (
-          $debug && set -x
-          curl "${curl_authorization[@]}" \
-               "${curl_options_common[@]}" \
-               "${curl_options_post[@]}" \
-               -X POST "$api/events/channels" -d "{\"client-id\":\"$channelname\"}"
-        )
+        # The new channel's URL will be returned with a "Location:" header.
+        # We catch it with "--dump-header -" (dump headers to stdout) and then an awk.
+        # Elsewhere in Ada, we run curl in a subshell, but we can't do that here,
+        # because then the value of $channel would be lost.
+        $debug && set -x
+        channel=$(curl "${curl_authorization[@]}" \
+                       "${curl_options_common[@]}" \
+                       "${curl_options_post[@]}" \
+                       --dump-header - \
+                       -X POST "$api/events/channels" -d "{\"client-id\":\"$channelname\"}" \
+                  | awk '/Location:/ {print $2}' \
+                  | tr -d '\r'
+                 )
+        $debug && set +x
+        if [ -z "$channel" ] ; then
+          echo 1>&2 "ERROR: failed to create channel name '$channelname'."
+          exit 1
+        fi
+        channel_id=$(basename "$channel")
         # There is no API call to translate channel ID back to
         # channel name. So we keep track of the name ourselves.
         echo "$channelname" > "${ada_dir}/channels/channel-name-${channel_id}"
