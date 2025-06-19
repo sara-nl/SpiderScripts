@@ -2097,6 +2097,12 @@ construct_auth() {
       fi
       ;;
   esac
+  # Let's check whether we can successfully authenticate.
+  # Except when we want to view a token!
+  # The token may be viewed even if it is invalid.
+  if [[ "$command" != "viewtoken" ]] ; then
+    check_authentication || exit 1
+  fi
 }
 # End construct_auth()
 
@@ -2660,12 +2666,6 @@ main() {
   validate_input
   setup_dirs
   construct_auth
-  # Before calling the API, let's check whether we can successfully authenticate.
-  # Except when we want to view a token!
-  # The token may be viewed even if it is invalid.
-  if [[ "$command" != "viewtoken" ]] ; then
-    check_authentication || exit 1
-  fi
   api_call
 }
 
