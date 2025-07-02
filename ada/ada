@@ -605,13 +605,13 @@ get_args() {
         ;;
       --events )
         command='events'
-        channelname="$2"
+        channel_name="$2"
         path="$3"
         shift ; shift ; shift
         ;;
       --report-staged )
         command='report-staged'
-        channelname="$2"
+        channel_name="$2"
         path="$3"
         shift ; shift ; shift
         ;;
@@ -645,7 +645,7 @@ get_args() {
             ;;
           * )
             # This must be a channel name
-            channelname="$2"
+            channel_name="$2"
             shift
             ;;
         esac
@@ -653,7 +653,7 @@ get_args() {
         ;;
       --delete-channel )
         command='delete-channel'     
-        channelname="$2"
+        channel_name="$2"
         shift ; shift
         ;;        
       --space )
@@ -1457,34 +1457,34 @@ get_checksums () {
 
 
 get_channel_by_name () {
-  local channelname="$1"
+  local channel_name="$1"
   # Many other API calls depend on this one.
   # So if this one fails, we quit the script.
   channel_json=$(
                   $debug && set -x
                   curl "${curl_authorization[@]}" \
                        "${curl_options_common[@]}" \
-                       -X GET "$api/events/channels?client-id=$channelname"
+                       -X GET "$api/events/channels?client-id=$channel_name"
                 ) \
                 || {
                      echo "ERROR: unable to check for channels." 1>&2
                      exit 1
                    }
-  channel=$(jq -r '.[]' <<<"$channel_json")
-  channel_count=$(wc -l <<<"$channel")
+  channel_url=$(jq -r '.[]' <<<"$channel_json")
+  channel_count=$(wc -l <<<"$channel_url")
   if [ "$channel_count" -gt 1 ] ; then
     echo 1>&2 "ERROR: there is more than one channel with that name:"
-    echo "$channel"
+    echo "$channel_url"
     exit 1
   fi
-  echo "$channel"
+  echo "$channel_url"
 }
 
 get_channels () {
-  local channelname="$1"
+  local channel_name="$1"
   local query=''
-  if [ -n "$channelname" ] ; then
-    query="?client-id=$channelname"
+  if [ -n "$channel_name" ] ; then
+    query="?client-id=$channel_name"
   fi
   (
     $debug && set -x
@@ -1496,7 +1496,7 @@ get_channels () {
 }
 
 channel_subscribe () {
-  local channel="$1"
+  local channel_url="$1"
   local path="$2"
   local recursive="$3"
   (
@@ -1504,26 +1504,26 @@ channel_subscribe () {
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
          "${curl_options_post[@]}" \
-         -X POST "$channel/subscriptions/inotify" \
+         -X POST "$channel_url/subscriptions/inotify" \
          -d "{\"path\":\"$path\"}"
   )
   if $recursive ; then
     get_subdirs "$path" \
     | while read -r subdir ; do
       $debug && echo "Subscribing to: $path/$subdir"
-      channel_subscribe "$channel" "$path/$subdir" "$recursive"
+      channel_subscribe "$channel_url" "$path/$subdir" "$recursive"
     done
   fi
 }
 
 
 get_subscriptions_by_channel () {
-  local channel="$1"
+  local channel_url="$1"
   (
     $debug && set -x
     curl "${curl_authorization[@]}" \
          "${curl_options_common[@]}" \
-         -X GET "$channel/subscriptions" \
+         -X GET "$channel_url/subscriptions" \
     | jq -r '.[]'
   )
 }
@@ -1560,9 +1560,9 @@ follow_channel () {
   # Much of the functionality is the same, but
   # with --report-staged we're checking only whether files
   # are being brought online.
-  local channel="$1"
+  local channel_url="$1"
   declare -A subscriptions
-  channel_id=$(basename "$channel")
+  channel_id=$(basename "$channel_url")
   channel_status_file="${ada_dir}/channels/channel-status-${channel_id}"
   # If a file exists with the last event for this channel,
   # We should resume from that event ID.
@@ -1580,7 +1580,7 @@ follow_channel () {
     $debug && set -x
     curl "${curl_authorization[@]}" \
          "${curl_options_stream[@]}" \
-         -X GET "$channel" \
+         -X GET "$channel_url" \
          "${last_event_id_header[@]}"
   ) \
   | while IFS=': ' read -r key value ; do
@@ -1624,7 +1624,7 @@ follow_channel () {
               # If recursion is requested, we need to start following new directories.
               if $recursive ; then
                 if [ "$mask" = "IN_CREATE,IN_ISDIR" ] ; then
-                  channel_subscribe "$channel" "$path/$object_name" "$recursive"
+                  channel_subscribe "$channel_url" "$path/$object_name" "$recursive"
                 fi
               fi
               #
@@ -1999,7 +1999,7 @@ validate_input() {
           fi
           ;;
         events | report-staged )
-          if [[ -z $channelname || $channelname =~ ^-- ]] ; then
+          if [[ -z $channel_name || $channel_name =~ ^-- ]] ; then
             echo 1>&2 "ERROR: command $command requires a channel name."
             exit 1
           fi
@@ -2020,7 +2020,7 @@ validate_input() {
       fi
       ;;
     delete-channel )
-      if [[ -z $channelname || $channelname =~ ^-- ]] ; then
+      if [[ -z $channel_name || $channel_name =~ ^-- ]] ; then
         echo 1>&2 "ERROR: command $command requires a channel name."
         exit 1
       fi
@@ -2520,53 +2520,53 @@ api_call () {
         esac
         exit 1
       fi
-      channel=$(get_channel_by_name "$channelname")
-      channel_id=$(basename "$channel")
-      if [ "$channel" = "" ] ; then
+      channel_url=$(get_channel_by_name "$channel_name")
+      channel_id=$(basename "$channel_url")
+      if [ "$channel_url" = "" ] ; then
         # Channel doesn't exist; create it.
         # The new channel's URL will be returned with a "Location:" header.
         # We catch it with "--dump-header -" (dump headers to stdout) and then an awk.
         # Elsewhere in Ada, we run curl in a subshell, but we can't do that here,
         # because then the value of $channel would be lost.
         $debug && set -x
-        channel=$(curl "${curl_authorization[@]}" \
-                       "${curl_options_common[@]}" \
-                       "${curl_options_post[@]}" \
-                       --dump-header - \
-                       -X POST "$api/events/channels" -d "{\"client-id\":\"$channelname\"}" \
-                  | awk '/Location:/ {print $2}' \
-                  | tr -d '\r'
-                 )
+        channel_url=$(curl "${curl_authorization[@]}" \
+                           "${curl_options_common[@]}" \
+                           "${curl_options_post[@]}" \
+                           --dump-header - \
+                           -X POST "$api/events/channels" -d "{\"client-id\":\"$channel_name\"}" \
+                      | awk '/Location:/ {print $2}' \
+                      | tr -d '\r'
+                     )
         $debug && set +x
-        if [ -z "$channel" ] ; then
-          echo 1>&2 "ERROR: failed to create channel name '$channelname'."
+        if [ -z "$channel_url" ] ; then
+          echo 1>&2 "ERROR: failed to create channel name '$channel_name'."
           exit 1
         fi
-        channel_id=$(basename "$channel")
+        channel_id=$(basename "$channel_url")
         # There is no API call to translate channel ID back to
         # channel name. So we keep track of the name ourselves.
-        echo "$channelname" > "${ada_dir}/channels/channel-name-${channel_id}"
+        echo "$channel_name" > "${ada_dir}/channels/channel-name-${channel_id}"
         # Set channel timeout
         (
           $debug && set -x
           curl "${curl_authorization[@]}" \
                "${curl_options_common[@]}" \
                "${curl_options_post[@]}" \
-               -X PATCH "$channel" \
+               -X PATCH "$channel_url" \
                -d "{\"timeout\": $channel_timeout}"
         )
       elif ! $resume ; then
         # Channel already exists; add --resume to continue
-        echo 1>&2 "ERROR: channel name '$channelname' is already used. To resume following this channel, add  --resume."
+        echo 1>&2 "ERROR: channel name '$channel_name' is already used. To resume following this channel, add  --resume."
         exit 1
       elif [ ! -f "${ada_dir}/channels/channel-name-${channel_id}" ] && ! $force ; then
-        # Channel already exists but channelname was not saved locally; add --resume and --force to continue      
-        echo 1>&2 "ERROR: channel name '$channelname' is already used but was not saved locally. Add --force if you still want to resume."
+        # Channel already exists but channel_name was not saved locally; add --resume and --force to continue      
+        echo 1>&2 "ERROR: channel name '$channel_name' is already used but was not saved locally. Add --force if you still want to resume."
         exit 1
       fi
-      echo "Channel: $channel"
-      channel_subscribe "$channel" "$path" "$recursive"
-      for subscription in $(get_subscriptions_by_channel "$channel") ; do
+      echo "Channel: $channel_url"
+      channel_subscribe "$channel_url" "$path" "$recursive"
+      for subscription in $(get_subscriptions_by_channel "$channel_url") ; do
         list_subscription "$subscription"
       done
       case $command in
@@ -2579,29 +2579,29 @@ api_call () {
           echo "Listening for file status changes..."
           ;;
       esac
-      follow_channel "$channel"
+      follow_channel "$channel_url"
       ;;
     channels )
       first=true
-      get_channels "$channelname" \
+      get_channels "$channel_name" \
       | while read -r channel ; do
         # Show empty line between channels
         ! $first && echo
         first=false
         # Show channel ID
-        echo -n "$(basename "$channel")"
+        echo -n "$(basename "$channel_url")"
         # Show channel name, if that was saved locally
         # (There is no API call to retrieve the channel name)
-        channel_id=$(basename "$channel")
+        channel_id=$(basename "$channel_url")
         if [ -f "${ada_dir}/channels/channel-name-${channel_id}" ] ; then
-          channelname=$(< "${ada_dir}/channels/channel-name-${channel_id}")
-          echo -n "  name=$channelname"
+          channel_name=$(< "${ada_dir}/channels/channel-name-${channel_id}")
+          echo -n "  name=$channel_name"
         fi
         # Show channel properties (for now only the timeout)
         channel_properties=$(
           curl "${curl_authorization[@]}" \
                "${curl_options_common[@]}" \
-               -X GET "$channel" \
+               -X GET "$channel_url" \
           | jq -r 'to_entries[] | [.key, .value] | @tsv' \
           | tr '\t' '='
         )
@@ -2616,7 +2616,7 @@ api_call () {
         fi
         echo "  $channel_properties"
         # Next, show all subscribed paths in this channel.
-        get_subscriptions_by_channel "$channel" \
+        get_subscriptions_by_channel "$channel_url" \
         | while read -r subscription ; do
           {
             echo -n "$(basename "$subscription")  "
@@ -2628,11 +2628,11 @@ api_call () {
       done
       ;;
     delete-channel )
-      channel=$(get_channel_by_name "$channelname")
-      channel_id=$(basename "$channel")
-      if [ -z "$channel" ] ; then      
+      channel_url=$(get_channel_by_name "$channel_name")
+      channel_id=$(basename "$channel_url")
+      if [ -z "$channel_url" ] ; then      
         # Channel doesn't exist
-        echo "Channel '$channelname' does not exist."
+        echo "Channel '$channel_name' does not exist."
       else
         (
           $debug && set -x
