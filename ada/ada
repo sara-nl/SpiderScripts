@@ -2641,6 +2641,9 @@ api_call () {
                "${curl_options_post[@]}" \
                -X DELETE "$api"/events/channels/"$channel_id"
         )
+        # delete local channelfiles
+        rm -f "${ada_dir}/channels/channel-name-${channel_id}"
+        rm -f "${ada_dir}/channels/channel-status-${channel_id}"        
       fi
       ;;
     space )
