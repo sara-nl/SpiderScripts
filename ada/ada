@@ -991,7 +991,7 @@ get_webdav_door () {
   if $dry_run ; then
     echo "$command"
   else
-    $debug && echo "Getting WebDAV door from $api_server/scripts/config.js ..."
+    $debug && echo "Getting WebDAV door from $api_server/scripts/config.js ..." 1>&2
     webdav_door=$(eval "$command")
   fi
   # If we got a WebDAV door, we're done! Print value and return.
@@ -999,7 +999,7 @@ get_webdav_door () {
     echo "$webdav_door"
     return 0
   fi
-  $debug && echo "Method failed. Trying next method."
+  $debug && echo "Method failed. Trying next method." 1>&2
   # If the first method failed, we try a backup method.
   # This uses the /doors API call, which lists all doors.
   # The list of doors can be quite long.
@@ -1034,7 +1034,7 @@ get_webdav_door () {
   if $dry_run ; then
     echo "$command"
   else
-    $debug && echo "Getting WebDAV door from $api/doors ..."
+    $debug && echo "Getting WebDAV door from $api/doors ..." 1>&2
     webdav_door=$(eval "$command")
   fi
   # If we got a WebDAV door, we're done! Print value and return.
@@ -1042,6 +1042,7 @@ get_webdav_door () {
     echo "$webdav_door"
     return 0
   else
+    echo "Unable to get WebDAV door. Try again with --debug to get more information." 1>&2
     return 1
   fi
 }
