@@ -974,13 +974,24 @@ check_authentication() {
 get_webdav_door () {
   # The dCache API itself does not allow uploading and downloading
   # of data. We need a WebDAV door for that.
-  # A properly configured API can redirect us to a WebDAV door,
-  # which we can use for uploading and downloading data.
-  # This function will return the WebDAV door.
+  # This function will return a WebDAV door.
+  # There can be several methods to find a WebDAV door.
+  # One is, reading it from an Rclone config file.
+  # Two other methods ask the API for a WebDAV door.
+  # If no door can be found, an error code is returned.
   local api="$1"
   local api_server="${api%/api/v*}"
   local webdav_door
   local command
+  # Method 1: if there's an Rclone config file, read the WebDAV door from that.
+  if [ -f "$tokenfile" ] ; then
+    $debug && echo "Getting WebDAV door from '$tokenfile' ..." 1>&2
+    webdav_door=$(awk -F' *= *' '/^url *=/ {print $2}' "$tokenfile")
+    echo "$webdav_door"
+    return 0
+  fi
+  $debug && echo "Method failed. Trying next method." 1>&2
+  # Method 2: read the /scripts/config.js file from the API server.
   command='$debug && set -x
            curl "${curl_authorization[@]}" \
                 "${curl_options_common[@]}" \
@@ -1000,7 +1011,7 @@ get_webdav_door () {
     return 0
   fi
   $debug && echo "Method failed. Trying next method." 1>&2
-  # If the first method failed, we try a backup method.
+  # Method 3.
   # This uses the /doors API call, which lists all doors.
   # The list of doors can be quite long.
   # From the list, we select the most appropriate.
