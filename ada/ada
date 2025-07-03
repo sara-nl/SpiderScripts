@@ -1053,7 +1053,7 @@ get_webdav_door () {
     echo "$webdav_door"
     return 0
   else
-    echo "Unable to get WebDAV door. Try again with --debug to get more information." 1>&2
+    echo "Unable to get WebDAV door. Please try again with --debug to get more information." 1>&2
     return 1
   fi
 }
