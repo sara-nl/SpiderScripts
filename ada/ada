@@ -987,8 +987,10 @@ get_webdav_door () {
   if [ -f "$tokenfile" ] ; then
     $debug && echo "Getting WebDAV door from '$tokenfile' ..." 1>&2
     webdav_door=$(awk -F' *= *' '/^url *=/ {print $2}' "$tokenfile")
-    echo "$webdav_door"
-    return 0
+    if [ -n "$webdav_door" ] ; then
+      echo "$webdav_door"
+      return 0
+    fi
   fi
   $debug && echo "Method failed. Trying next method." 1>&2
   # Method 2: read the /scripts/config.js file from the API server.
