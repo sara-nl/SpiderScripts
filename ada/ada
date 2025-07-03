@@ -2527,7 +2527,7 @@ api_call () {
         # The new channel's URL will be returned with a "Location:" header.
         # We catch it with "--dump-header -" (dump headers to stdout) and then an awk.
         # Elsewhere in Ada, we run curl in a subshell, but we can't do that here,
-        # because then the value of $channel would be lost.
+        # because then the value of $channel_url would be lost.
         $debug && set -x
         channel_url=$(curl "${curl_authorization[@]}" \
                            "${curl_options_common[@]}" \
