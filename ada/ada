@@ -2584,7 +2584,7 @@ api_call () {
     channels )
       first=true
       get_channels "$channel_name" \
-      | while read -r channel ; do
+      | while read -r channel_url ; do
         # Show empty line between channels
         ! $first && echo
         first=false
