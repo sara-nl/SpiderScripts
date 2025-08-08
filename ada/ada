@@ -1100,6 +1100,25 @@ pathtype () {
 }
 
 
+is_dir () {
+  # Check whether a path is a directory. If the path doesn't exist, just continue.
+  # Similar to pathtype(), but that one quits with error if the path doesn't exist.
+  encoded_path=$(urlencode "$1")
+  command='$debug && set -x
+          curl "${curl_authorization[@]}" \
+          -H "accept: application/json" \
+          --silent \
+          -X GET "$api/namespace/$encoded_path"'
+  if $dry_run ; then
+    echo "$command"
+  else
+    result=$(eval "$command")
+    # The result of the grep will be passed on to the calling statement.
+    echo "$result" | jq -r .fileType | grep --silent 'DIR'
+  fi
+}
+
+
 get_pnfsid () {
   local path=$(urlencode "$1")
   command='curl "${curl_authorization[@]}" \
@@ -1313,19 +1332,21 @@ create_path () {
   local path="$1"
   local recursive="$2"
   local parent="$(dirname "$path")"
-  get_locality "$parent"
-  error=$?
-  if [ $error == 1 ] && $recursive ; then
-    if [ "${#parent}" -gt 1 ]; then
-      echo 1>&2 "Warning: parent dir '$parent' does not exist. Will atempt to create it."
-      create_path "$parent" "$recursive"
+  if ! is_dir "$parent" ; then
+    # The parent dir does not exist yet. Should we create it?
+    if $recursive ; then
+      if [ "${#parent}" -gt 1 ]; then
+        echo 1>&2 "Warning: parent dir '$parent' does not exist. Will attempt to create it."
+        create_path "$parent" "$recursive"
+      else
+        # We reached the root dir. Something most be wrong.
+        echo 1>&2 "ERROR: Unable to create dirs. Check the specified path."
+        exit 1
+      fi
     else
-      echo 1>&2 "ERROR: Unable to create dirs. Check the specified path."
+      echo 1>&2 "ERROR: parent dir '$parent' does not exist. To recursively create dirs, add --recursive."
       exit 1
     fi
-  elif [ $error == 1 ]; then
-    echo 1>&2 "ERROR: parent dir '$parent' does not exist. To recursivly create dirs, add --recursive."
-    exit 1
   fi
   parent=$(urlencode "$(dirname "$path")")
   name=$(basename "$path")
@@ -2317,6 +2338,10 @@ api_call () {
       )
       ;;
     mkdir )
+      if is_dir "$path" ; then
+        echo 1>&2 "Directory '$path' already exists."
+        exit 0
+      fi
       create_path "$path" "$recursive"
       ;;
     mv )
