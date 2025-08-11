@@ -228,6 +228,12 @@ usage() {
 	      The pinned (sticky) capacity can be calculated with:
 	      "ada ... | jq '.total - .free - .precious - .removable'"
 
+	  --quota <all|own>
+	      Shows storage quotas, for tape (custodial) and for disk (replica).
+	      With 'all' (default), shows all quotas.
+	      With 'own', shows only quotas for your own user ID or for
+	      your primary group ID.
+
 
 	Configuration files:
 
@@ -666,6 +672,26 @@ get_args() {
             # This must be a poolgroup
             poolgroup="$2"
             shift
+            ;;
+        esac
+        shift
+        ;;
+      --quota )
+        command='quota'
+        case $2 in
+          own | all )
+            # Quota scope has been specified by user.
+            quota_scope="$2"
+            shift
+            ;;
+          --* | '' )
+            # Next argument is another option or absent; not a scope.
+            # Use default scope 'all'
+            quota_scope=all
+            ;;
+          * )
+            echo 1>&2 "ERROR: '$2' is not a valid scope for --quota. Use 'own' or 'all' (default)"
+            exit 1
             ;;
         esac
         shift
@@ -1843,13 +1869,26 @@ get_dcache_versions () {
 
 
 get_quota () {
+  local quota_scope="$1"
+  case $quota_scope in
+    own | '' )
+      query_parameter='user=true'
+      ;;
+    all )
+      query_parameter='user=false'
+      ;;
+    * )
+      echo 1>&2 "ERROR: quota scope is $quota_scope, but should be either 'own' or 'all'."
+      exit 1
+      ;;
+  esac
+  # Show quotas, for disk and tape, and for user(s) and group(s).
   # We use bash arrays for this. For that, we need a fresh bash.
   if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
     echo 1>&2 "Unable to show quota. Get a newer bash version" \
               "('brew install bash') if you need to view quota."
     return 1
   fi
-  # Show user quotas, for disk and tape, and for UID and GID
   declare -A quota
   has_quota=false
   # First we collect the user (UID) quota, then the group (GID) quota.
@@ -1861,7 +1900,7 @@ get_quota () {
                     "${curl_options_common[@]}" \
                     --silent --show-error \
                     --write-out "\nHTTP_CODE_%{http_code}" \
-                    -X GET "$api/quota/${quota_type}?user=true" 2>&1
+                    -X GET "$api/quota/${quota_type}?${query_parameter}" 2>&1
               )
     status=$(echo "$response" | grep '^HTTP_CODE')    # HTTP return code
     case $status in
@@ -2196,7 +2235,8 @@ validate_input() {
         exit 1
       fi
       ;;
-    whoami | channels | space )
+    whoami | channels | space | quota )
+      # These commands do not require additional input validation
       ;;
     '' )
       echo 1>&2 "ERROR. Please specify a command. See --help for more information."
@@ -2298,7 +2338,7 @@ api_call () {
              -X GET "$api/user" \
         | jq .
       )
-      get_quota
+      get_quota own
       ;;
     list )
       type=$(pathtype "$path")
@@ -2836,6 +2876,9 @@ api_call () {
           | jq '.groupSpaceData'
         )
       fi
+      ;;
+    quota )
+      get_quota "$quota_scope"
       ;;
     * )
       echo "Command '$command' is not implemented (yet)."
