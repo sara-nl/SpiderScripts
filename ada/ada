@@ -1843,110 +1843,81 @@ get_dcache_versions () {
 
 
 get_quota () {
-  # ToDo: when user has no quota, show a message "You have no quota, but space may be limited by poolgroup size."
+  # We use bash arrays for this. For that, we need a fresh bash.
+  if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
+    echo 1>&2 "Unable to show quota. Get a newer bash version" \
+              "('brew install bash') if you need to view quota."
+    return 1
+  fi
+  # Show user quotas, for disk and tape, and for UID and GID
+  declare -A quota
   has_quota=false
-  # Get user quota
-  response=$(curl "${curl_authorization[@]}" \
-                  "${curl_options_common[@]}" \
-                  --silent --show-error \
-                  --write-out "\nHTTP_CODE_%{http_code}" \
-                  -X GET "$api/quota/user?user=true" 2>&1
-            )
-  status=$(echo "$response" | grep '^HTTP_CODE')    # HTTP code
-  case $status in
-    HTTP_CODE_200 )
-      has_quota=true
-      user_quota=$(echo "$response" | grep -v '^HTTP_CODE')
-      ;;
-    HTTP_CODE_404 )
-      user_quota=""
-      ;;
-    * )
-      echo "Unable to get user quota."
-      echo "$response"
-      return 1
-      ;;
-  esac
-  # Get group quota
-  response=$(curl "${curl_authorization[@]}" \
-                  "${curl_options_common[@]}" \
-                  --silent --show-error \
-                  --write-out "\nHTTP_CODE_%{http_code}" \
-                  -X GET "$api/quota/group?user=true" 2>&1
-            )
-  status=$(echo "$response" | grep '^HTTP_CODE')    # HTTP code
-  case $status in
-    HTTP_CODE_200 )
-      has_quota=true
-      group_quota=$(echo "$response" | grep -v '^HTTP_CODE')
-      ;;
-    HTTP_CODE_404 )
-      group_quota=""
-      ;;
-    * )
-      echo "Unable to get group quota."
-      echo "$response"
-      return 1
-      ;;
-  esac
+  # First we collect the user (UID) quota, then the group (GID) quota.
+  # After that, we do the handling & processing.
+  for quota_type in user group ; do
+    # We use curl's "--writeout" to collect the HTTP return code.
+    # If the code is 404, it means the user doesn't have this type of quota.
+    response=$(curl "${curl_authorization[@]}" \
+                    "${curl_options_common[@]}" \
+                    --silent --show-error \
+                    --write-out "\nHTTP_CODE_%{http_code}" \
+                    -X GET "$api/quota/${quota_type}?user=true" 2>&1
+              )
+    status=$(echo "$response" | grep '^HTTP_CODE')    # HTTP return code
+    case $status in
+      HTTP_CODE_200 )
+        # Quota was found! Process it later.
+        has_quota=true
+        quota[$quota_type]=$(echo "$response" | grep -v '^HTTP_CODE')
+        ;;
+      HTTP_CODE_404 )
+        # No quota of this type found.
+        quota[$quota_type]=""
+        ;;
+      * )
+        # If it's not a 404 but another error message, there is something wrong.
+        # So we print the error message and then quit this function.
+        echo 1>&2 "Unable to get $quota_type quota."
+        echo 1>&2 "$response"
+        return 1
+        ;;
+    esac
+  done
   # If there's either a user quota or a group quota, we print it.
+  # We use tabs as separators and then use column -t to format it in a table.
   if $has_quota ; then
     {
-      # Print header, with tab as separator
+      # Print header
       printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
-            "Quota:" "custodial (tape)" "custodialLimit" "%" "replica (disk)" "replicaLimit" "%"
-      # Print user quota
-      jq -r ' .[] |
-              [
-                (.type + ":" + (.id|tostring)),
-                (.custodial | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
-                (.custodialLimit | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
-                # custodial percentage (avoid division by null or 0)
-                (
-                  if (.custodialLimit // 0) > 0 then
-                    ((.custodial / .custodialLimit * 100) | tostring | capture("^(?<n>-?\\d+(?:\\.\\d)?)") | .n + "%")
-                  else
-                    "-"
-                  end
-                ),
-                (.replica | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
-                (.replicaLimit | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
-                # replica percentage
-                (
-                  if (.replicaLimit // 0) > 0 then
-                    ((.replica / .replicaLimit * 100) | tostring | capture("^(?<n>-?\\d+(?:\\.\\d)?)") | .n + "%")
-                  else
-                    "-"
-                  end
-                )
-              ] | @tsv
-            ' <<< "$user_quota"
-      # Print group quota
-      jq -r ' .[] |
-              [
-                (.type + ":" + (.id|tostring)),
-                (.custodial | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
-                (.custodialLimit | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
-                # custodial percentage (avoid division by null or 0)
-                (
-                  if (.custodialLimit // 0) > 0 then
-                    ((.custodial / .custodialLimit * 100) | tostring | capture("^(?<n>-?\\d+(?:\\.\\d)?)") | .n + "%")
-                  else
-                    "-"
-                  end
-                ),
-                (.replica | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
-                (.replicaLimit | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
-                # replica percentage
-                (
-                  if (.replicaLimit // 0) > 0 then
-                    ((.replica / .replicaLimit * 100) | tostring | capture("^(?<n>-?\\d+(?:\\.\\d)?)") | .n + "%")
-                  else
-                    "-"
-                  end
-                )
-              ] | @tsv
-            ' <<< "$group_quota"
+             "Quota:" "custodial (tape)" "custodialLimit" "%" "replica (disk)" "replicaLimit" "%"
+      # Print user & group quota as tab separated values
+      for quota_type in user group ; do
+        jq -r ' .[] |
+                [
+                  (.type + ":" + (.id|tostring)),
+                  (.custodial | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                  (.custodialLimit | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                  # custodial percentage (avoid division by null or 0)
+                  (
+                    if (.custodialLimit // 0) > 0 then
+                      ((.custodial / .custodialLimit * 100) | tostring | capture("^(?<n>-?\\d+(?:\\.\\d)?)") | .n + "%")
+                    else
+                      "-"
+                    end
+                  ),
+                  (.replica | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                  (.replicaLimit | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                  # replica percentage
+                  (
+                    if (.replicaLimit // 0) > 0 then
+                      ((.replica / .replicaLimit * 100) | tostring | capture("^(?<n>-?\\d+(?:\\.\\d)?)") | .n + "%")
+                    else
+                      "-"
+                    end
+                  )
+                ] | @tsv
+              ' <<< "${quota[$quota_type]}"
+      done
     } | column -t -s $'\t'
   fi
 }
