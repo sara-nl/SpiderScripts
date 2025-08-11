@@ -1842,6 +1842,116 @@ get_dcache_versions () {
 }
 
 
+get_quota () {
+  # ToDo: when user has no quota, show a message "You have no quota, but space may be limited by poolgroup size."
+  has_quota=false
+  # Get user quota
+  response=$(curl "${curl_authorization[@]}" \
+                  "${curl_options_common[@]}" \
+                  --silent --show-error \
+                  --write-out "\nHTTP_CODE_%{http_code}" \
+                  -X GET "$api/quota/user?user=true" 2>&1
+            )
+  status=$(echo "$response" | grep '^HTTP_CODE')    # HTTP code
+  case $status in
+    HTTP_CODE_200 )
+      has_quota=true
+      user_quota=$(echo "$response" | grep -v '^HTTP_CODE')
+      ;;
+    HTTP_CODE_404 )
+      user_quota=""
+      ;;
+    * )
+      echo "Unable to get user quota."
+      echo "$response"
+      return 1
+      ;;
+  esac
+  # Get group quota
+  response=$(curl "${curl_authorization[@]}" \
+                  "${curl_options_common[@]}" \
+                  --silent --show-error \
+                  --write-out "\nHTTP_CODE_%{http_code}" \
+                  -X GET "$api/quota/group?user=true" 2>&1
+            )
+  status=$(echo "$response" | grep '^HTTP_CODE')    # HTTP code
+  case $status in
+    HTTP_CODE_200 )
+      has_quota=true
+      group_quota=$(echo "$response" | grep -v '^HTTP_CODE')
+      ;;
+    HTTP_CODE_404 )
+      group_quota=""
+      ;;
+    * )
+      echo "Unable to get group quota."
+      echo "$response"
+      return 1
+      ;;
+  esac
+  # If there's either a user quota or a group quota, we print it.
+  if $has_quota ; then
+    {
+      # Print header, with tab as separator
+      printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+            "Quota:" "custodial (tape)" "custodialLimit" "%" "replica (disk)" "replicaLimit" "%"
+      # Print user quota
+      jq -r ' .[] |
+              [
+                (.type + ":" + (.id|tostring)),
+                (.custodial | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                (.custodialLimit | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                # custodial percentage (avoid division by null or 0)
+                (
+                  if (.custodialLimit // 0) > 0 then
+                    ((.custodial / .custodialLimit * 100) | tostring | capture("^(?<n>-?\\d+(?:\\.\\d)?)") | .n + "%")
+                  else
+                    "-"
+                  end
+                ),
+                (.replica | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                (.replicaLimit | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                # replica percentage
+                (
+                  if (.replicaLimit // 0) > 0 then
+                    ((.replica / .replicaLimit * 100) | tostring | capture("^(?<n>-?\\d+(?:\\.\\d)?)") | .n + "%")
+                  else
+                    "-"
+                  end
+                )
+              ] | @tsv
+            ' <<< "$user_quota"
+      # Print group quota
+      jq -r ' .[] |
+              [
+                (.type + ":" + (.id|tostring)),
+                (.custodial | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                (.custodialLimit | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                # custodial percentage (avoid division by null or 0)
+                (
+                  if (.custodialLimit // 0) > 0 then
+                    ((.custodial / .custodialLimit * 100) | tostring | capture("^(?<n>-?\\d+(?:\\.\\d)?)") | .n + "%")
+                  else
+                    "-"
+                  end
+                ),
+                (.replica | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                (.replicaLimit | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                # replica percentage
+                (
+                  if (.replicaLimit // 0) > 0 then
+                    ((.replica / .replicaLimit * 100) | tostring | capture("^(?<n>-?\\d+(?:\\.\\d)?)") | .n + "%")
+                  else
+                    "-"
+                  end
+                )
+              ] | @tsv
+            ' <<< "$group_quota"
+    } | column -t -s $'\t'
+  fi
+}
+
+
 to_json () {
   # Analyze metadata and convert it to JSON so we can feed it to "set-xattr"
   #
@@ -2217,6 +2327,7 @@ api_call () {
              -X GET "$api/user" \
         | jq .
       )
+      get_quota
       ;;
     list )
       type=$(pathtype "$path")
