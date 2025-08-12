@@ -1104,18 +1104,15 @@ is_dir () {
   # Check whether a path is a directory. If the path doesn't exist, just continue.
   # Similar to pathtype(), but that one quits with error if the path doesn't exist.
   encoded_path=$(urlencode "$1")
-  command='$debug && set -x
-          curl "${curl_authorization[@]}" \
-          -H "accept: application/json" \
-          --silent \
-          -X GET "$api/namespace/$encoded_path"'
-  if $dry_run ; then
-    echo "$command"
-  else
-    result=$(eval "$command")
-    # The result of the grep will be passed on to the calling statement.
-    echo "$result" | jq -r .fileType | grep --silent 'DIR'
-  fi
+  result=$(
+            $debug && set -x
+            curl "${curl_authorization[@]}" \
+                 -H "accept: application/json" \
+                 --silent \
+                 -X GET "$api/namespace/$encoded_path" 2>/dev/null
+          )
+  # The exit code of the grep will be passed on to the calling statement.
+  echo "$result" | jq -r .fileType | grep --silent 'DIR'
 }
 
 

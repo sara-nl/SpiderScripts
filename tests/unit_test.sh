@@ -37,7 +37,7 @@ test_create_path() {
   ( create_path "/test/a" false >${stdoutF} 2>${stderrF} )
   result=$?
   assertFalse "expecting return code of 1 (false)" ${result}
-  grep "ERROR: parent dir '/test' does not exist. To recursivly create dirs, add --recursive" "${stderrF}" >/dev/null
+  grep "ERROR: parent dir '/test' does not exist. To recursively create dirs, add --recursive" "${stderrF}" >/dev/null
   assertTrue 'STDERR message incorrect' $?
 
   # Check error handling when max number of directories is exceeded 
