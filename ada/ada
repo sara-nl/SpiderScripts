@@ -2051,8 +2051,7 @@ validate_input() {
   case $command in
     list | stat | mkdir | mv | delete | \
     setlabel | lslabel | findlabel | rmlabel | \
-    setxattr | lsxattr | findxattr | rmxattr | \
-    events | report-staged )
+    setxattr | lsxattr | findxattr | rmxattr )
       if [[ -z $path || $path =~ ^-- ]] ; then
         echo 1>&2 "ERROR: command $command requires a path."
         exit 1
@@ -2106,13 +2105,21 @@ validate_input() {
             exit 1
           fi
           ;;
-        events | report-staged )
-          if [[ -z $channel_name || $channel_name =~ ^-- ]] ; then
-            echo 1>&2 "ERROR: command $command requires a channel name."
-            exit 1
-          fi
-          ;;
       esac
+      ;;
+    events | report-staged )
+      if [[ -z $channel_name || $channel_name =~ ^-- ]] ; then
+        echo 1>&2 "ERROR: command $command requires a channel name and a directory."
+        exit 1
+      fi
+      if [[ -z $path || $path =~ ^-- ]] ; then
+        echo 1>&2 "ERROR: command $command requires a directory."
+        exit 1
+      fi
+      if ! is_dir "$path" ; then
+        echo 1>&2 "ERROR: '$path' is not a directory."
+        exit 1
+      fi
       ;;
     longlist | checksum | stage | unstage )
       if [[ -z $pathlist || $pathlist =~ ^-- ]] ; then
