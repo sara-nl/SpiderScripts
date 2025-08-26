@@ -231,7 +231,7 @@ usage() {
 	  --quota <all|own>
 	      Shows storage quotas, for tape (custodial) and for disk (replica).
 	      With 'all' (default), shows all quotas.
-	      With 'own', shows only quotas for your own user ID or for
+	      With 'own', shows only quotas for your own user ID and/or
 	      your primary group ID.
 
 
