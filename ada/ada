@@ -228,6 +228,12 @@ usage() {
 	      The pinned (sticky) capacity can be calculated with:
 	      "ada ... | jq '.total - .free - .precious - .removable'"
 
+	  --quota <all|own>
+	      Shows storage quotas, for tape (custodial) and for disk (replica).
+	      With 'all' (default), shows all quotas.
+	      With 'own', shows only quotas for your own user ID and/or
+	      your primary group ID.
+
 
 	Configuration files:
 
@@ -666,6 +672,26 @@ get_args() {
             # This must be a poolgroup
             poolgroup="$2"
             shift
+            ;;
+        esac
+        shift
+        ;;
+      --quota )
+        command='quota'
+        case $2 in
+          own | all )
+            # Quota scope has been specified by user.
+            quota_scope="$2"
+            shift
+            ;;
+          --* | '' )
+            # Next argument is another option or absent; not a scope.
+            # Use default scope 'all'
+            quota_scope=all
+            ;;
+          * )
+            echo 1>&2 "ERROR: '$2' is not a valid scope for --quota. Use 'own' or 'all' (default)"
+            exit 1
             ;;
         esac
         shift
@@ -1411,36 +1437,12 @@ delete_path () {
 }
 
 
-get_locality () {
-  local path="$1"
-  locality="$( (\
-    $debug && set -x   # If --debug is specified, show curl & jq command
-    curl "${curl_authorization[@]}" \
-         "${curl_options_common[@]}" \
-         "${curl_options_post[@]}" \
-         -X POST "$api/tape/archiveinfo" \
-         -d "{\"paths\":[\"/${path}\"]}" \
-  ) | jq . | grep locality)"
-  if [ -z "$locality" ] ; then
-    return 1
-  else
-    return 0
-  fi
-}
-
-
 bulk_request() {
   local activity="$1"
   local pathlist="$2"
   local recursive="$3"
   if [ "$from_file" == false ] ; then
     local filepath="$2"
-    get_locality "$filepath"
-    error=$?
-    if [ "$error" == 1 ] ; then
-      echo 1>&2 "Error: '$filepath' does not exist."
-      exit 1
-    fi
     type=$(pathtype "$filepath")
     case $type in
       DIR )
@@ -1860,6 +1862,113 @@ get_dcache_versions () {
 }
 
 
+get_quota () {
+  local quota_scope="$1"
+  case $quota_scope in
+    own | '' )
+      query_parameter='user=true'
+      ;;
+    all )
+      query_parameter='user=false'
+      ;;
+    * )
+      echo 1>&2 "ERROR: quota scope is $quota_scope, but should be either 'own' or 'all'."
+      exit 1
+      ;;
+  esac
+  # Show quotas, for disk and tape, and for user(s) and group(s).
+  # We use bash arrays for this. For that, we need a fresh bash.
+  if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
+    echo 1>&2 "Unable to show quota. Get a newer bash version" \
+              "('brew install bash') if you need to view quota."
+    return 1
+  fi
+  declare -A quota
+  has_quota=false
+  # First we collect the user (UID) quota, then the group (GID) quota.
+  # After that, we do the handling & processing.
+  for quota_type in user group ; do
+    # We use curl's "--writeout" to collect the HTTP return code.
+    # If the code is 404, it means the user doesn't have this type of quota.
+    response=$(curl "${curl_authorization[@]}" \
+                    "${curl_options_common[@]}" \
+                    --silent --show-error \
+                    --write-out "\nHTTP_CODE_%{http_code}" \
+                    -X GET "$api/quota/${quota_type}?${query_parameter}" 2>&1
+              )
+    status=$(echo "$response" | grep '^HTTP_CODE')    # HTTP return code
+    case $status in
+      HTTP_CODE_200 )
+        # Quota was found! Process it later.
+        has_quota=true
+        quota[$quota_type]=$(echo "$response" | grep -v '^HTTP_CODE')
+        ;;
+      HTTP_CODE_404 )
+        # No quota of this type found.
+        quota[$quota_type]=""
+        ;;
+      * )
+        # If it's not a 404 but another error message, there is something wrong.
+        # So we print the error message and then quit this function.
+        echo 1>&2 "Unable to get $quota_type quota."
+        echo 1>&2 "$response"
+        return 1
+        ;;
+    esac
+  done
+  # If there's either a user quota or a group quota, we print it.
+  # We use tabs as separators and then use column -t to format it in a table.
+  if $has_quota ; then
+    {
+      # Print header
+      printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
+             "Quota:" "custodial (tape)" "custodialLimit" "%" "replica (disk)" "replicaLimit" "%"
+      # Print user & group quota as tab separated values
+      for quota_type in user group ; do
+        jq -r ' .[] |
+                [
+                  (.type + ":" + (.id|tostring)),
+                  (.custodial | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                  (.custodialLimit | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                  # custodial percentage (avoid division by null or 0)
+                  (
+                    if (.custodialLimit // 0) > 0 then
+                      ((.custodial / .custodialLimit * 100) | tostring | capture("^(?<n>-?\\d+(?:\\.\\d)?)") | .n + "%")
+                    else
+                      "-"
+                    end
+                  ),
+                  (.replica | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                  (.replicaLimit | tostring | gsub("(?<=\\d)(?=(\\d{3})+$)"; ",")),
+                  # replica percentage
+                  (
+                    if (.replicaLimit // 0) > 0 then
+                      ((.replica / .replicaLimit * 100) | tostring | capture("^(?<n>-?\\d+(?:\\.\\d)?)") | .n + "%")
+                    else
+                      "-"
+                    end
+                  )
+                ] | @tsv
+              ' <<< "${quota[$quota_type]}"
+      done
+    } | column -t -s $'\t'
+  else
+    # No quota found. If user ran `ada --quota`, show message.
+    # If the user ran `ada --whoami`, we don't need to show a message; it would only be confusing.
+    if [ "$command" == "quota" ] ; then
+      case $quota_scope in
+        own )
+          echo 1>&2 "You do not have any quota set on your user ID or primary group ID."
+          ;;
+        all )
+          echo 1>&2 "No quota found on this dCache system."
+          ;;
+      esac
+    fi
+  fi
+}
+
+
 to_json () {
   # Analyze metadata and convert it to JSON so we can feed it to "set-xattr"
   #
@@ -2140,7 +2249,8 @@ validate_input() {
         exit 1
       fi
       ;;
-    whoami | channels | space )
+    whoami | channels | space | quota )
+      # These commands do not require additional input validation
       ;;
     '' )
       echo 1>&2 "ERROR. Please specify a command. See --help for more information."
@@ -2242,6 +2352,7 @@ api_call () {
              -X GET "$api/user" \
         | jq .
       )
+      get_quota own
       ;;
     list )
       type=$(pathtype "$path")
@@ -2783,6 +2894,9 @@ api_call () {
           | jq '.groupSpaceData'
         )
       fi
+      ;;
+    quota )
+      get_quota "$quota_scope"
       ;;
     * )
       echo "Command '$command' is not implemented (yet)."
