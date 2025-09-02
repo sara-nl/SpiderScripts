@@ -1411,36 +1411,12 @@ delete_path () {
 }
 
 
-get_locality () {
-  local path="$1"
-  locality="$( (\
-    $debug && set -x   # If --debug is specified, show curl & jq command
-    curl "${curl_authorization[@]}" \
-         "${curl_options_common[@]}" \
-         "${curl_options_post[@]}" \
-         -X POST "$api/tape/archiveinfo" \
-         -d "{\"paths\":[\"/${path}\"]}" \
-  ) | jq . | grep locality)"
-  if [ -z "$locality" ] ; then
-    return 1
-  else
-    return 0
-  fi
-}
-
-
 bulk_request() {
   local activity="$1"
   local pathlist="$2"
   local recursive="$3"
   if [ "$from_file" == false ] ; then
     local filepath="$2"
-    get_locality "$filepath"
-    error=$?
-    if [ "$error" == 1 ] ; then
-      echo 1>&2 "Error: '$filepath' does not exist."
-      exit 1
-    fi
     type=$(pathtype "$filepath")
     case $type in
       DIR )
