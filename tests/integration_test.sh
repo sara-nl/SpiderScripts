@@ -30,8 +30,8 @@ test_ada_mkdir() {
     assertEquals "ada returned error code ${result}" 0 ${result} || return
     grep "success" "${stdoutF}" >/dev/null
     assertTrue "ada could not create the directory" $? || return
-    get_locality "/${disk_path}/${dirname}/${testdir}/${subdir}"
-    assertTrue "could not get locality" $?
+    is_dir "/${disk_path}/${dirname}/${testdir}/${subdir}"
+    assertTrue "is not a directory" $?
 }
 
 
