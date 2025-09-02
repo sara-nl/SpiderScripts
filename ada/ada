@@ -1958,6 +1958,19 @@ get_quota () {
               ' <<< "${quota[$quota_type]}"
       done
     } | column -t -s $'\t'
+  else
+    # No quota found. If user ran `ada --quota`, show message.
+    # If the user ran `ada --whoami`, we don't need to show a message; it would only be confusing.
+    if [ "$command" == "quota" ] ; then
+      case $quota_scope in
+        own )
+          echo 1>&2 "You do not have any quota set on your user ID or primary group ID."
+          ;;
+        all )
+          echo 1>&2 "No quota found on this dCache system."
+          ;;
+      esac
+    fi
   fi
 }
 
