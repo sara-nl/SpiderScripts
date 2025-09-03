@@ -113,7 +113,7 @@ test_get_children() {
 
 test_get_permissions() {
   result=`get_permissions "${stdoutF}"`
-  expected='-rw-r-----'  #check if default permission is 744
+  expected='-rw-r-----'  # Check if permission is 640
   assertEquals \
       "the result of get_permissions() was wrong" \
       "${expected}" "${result}"
