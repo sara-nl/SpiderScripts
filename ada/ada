@@ -2225,10 +2225,6 @@ validate_input() {
         echo 1>&2 "ERROR: command $command requires a directory."
         exit 1
       fi
-      if ! is_dir "$path" ; then
-        echo 1>&2 "ERROR: '$path' is not a directory."
-        exit 1
-      fi
       ;;
     longlist | checksum | stage | unstage )
       if [[ -z $pathlist || $pathlist =~ ^-- ]] ; then
@@ -2750,6 +2746,13 @@ api_call () {
         esac
         exit 1
       fi
+      # Some additional input validation, after construct_auth().
+      # We need an existing directory.
+      if ! is_dir "$path" ; then
+        echo 1>&2 "ERROR: '$path' is not a directory."
+        exit 1
+      fi
+      # Setting up channel
       channel_url=$(get_channel_by_name "$channel_name")
       channel_id=$(basename "$channel_url")
       if [ "$channel_url" = "" ] ; then
