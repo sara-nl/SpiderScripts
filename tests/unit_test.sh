@@ -113,7 +113,7 @@ test_get_children() {
 
 test_get_permissions() {
   result=`get_permissions "${stdoutF}"`
-  expected='-rw-r--r--'  #check if default permission is 744
+  expected='-rw-r-----'  # Check if permission is 640
   assertEquals \
       "the result of get_permissions() was wrong" \
       "${expected}" "${result}"
@@ -134,6 +134,9 @@ test_check_authentication() {
 
 
 oneTimeSetUp() {
+  # We need a predictable umask for the test_get_permissions.
+  umask 027
+  #
   outputDir="${SHUNIT_TMPDIR}/output"
   mkdir "${outputDir}"
   stdoutF="${outputDir}/stdout"
