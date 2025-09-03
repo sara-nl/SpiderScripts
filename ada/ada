@@ -2404,7 +2404,7 @@ api_call () {
               | jq -r '.children | .[]
                      | [ .fileName ,
                          .fileType ,
-                         .size ,
+                         (.size // "-") ,
                          (.mtime / 1000 | strftime("%Y-%m-%d %H:%M UTC")) ,
                          if .targetQos then (.currentQos + "→" + .targetQos) else .currentQos end ,
                          .fileLocality ]
