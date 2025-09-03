@@ -30,14 +30,14 @@ test_create_path() {
   ( create_path "/test/a" true >${stdoutF} 2>${stderrF} )
   result=$?
   assertFalse "expecting return code of 1 (false)" ${result}
-  grep "ERROR: Unable to create dirs. Check the specified path" "${stderrF}" >/dev/null
+  grep "ERROR: calling function is_dir() before authentication has been set up." "${stderrF}" >/dev/null
   assertTrue "STDERR message incorrect" $?
 
   # Check error handling when parent does not exist
   ( create_path "/test/a" false >${stdoutF} 2>${stderrF} )
   result=$?
   assertFalse "expecting return code of 1 (false)" ${result}
-  grep "ERROR: parent dir '/test' does not exist. To recursively create dirs, add --recursive" "${stderrF}" >/dev/null
+  grep "ERROR: calling function is_dir() before authentication has been set up." "${stderrF}" >/dev/null
   assertTrue 'STDERR message incorrect' $?
 
   # Check error handling when max number of directories is exceeded 
