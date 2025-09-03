@@ -1130,7 +1130,7 @@ is_dir () {
   # Check whether a path is a directory. If the path doesn't exist, just continue.
   # Similar to pathtype(), but that one quits with error if the path doesn't exist.
   encoded_path=$(urlencode "$1")
-  # Warn the developers not to call is_dir before the auth has not been set up.
+  # Warn the developers not to call is_dir before the auth has been set up.
   if [ -z "$curl_authorization" ] ; then
     echo 1>&2 "ERROR: calling function is_dir() before authentication has been set up." \
               "Please submit an issue for this at https://github.com/sara-nl/SpiderScripts/ ."
