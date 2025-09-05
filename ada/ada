@@ -1511,19 +1511,31 @@ bulk_request() {
   # See also https://github.com/dCache/dcache/issues/7892
   case $status in
     HTTP_CODE_403 | HTTP_CODE_422 )
-      if $recursive ; then
-        echo -e 1>&2 "Operation failed. Possible causes:\n" \
-                     "* You may not have permission to access the directory\n" \
-                     "* Recursive staging may be prohibited.\n" \
-                     "\nTry the same command without --recursive. If that works," \
-                     "the dCache system does not allow you to stage recursively." \
-                     "If you need recursion, ask your dCache admins to set" \
-                     "'bulk.allowed-directory-expansion=ALL'."
-      else
-        echo -e 1>&2 "Operation failed. Possible causes:\n" \
-                     "* You may not have permission to access the directory\n" \
-                     "* Your authentication token may not permit staging."
-      fi
+      case $expand in
+        ALL )
+          echo -e 1>&2 "Operation failed. Possible causes:\n" \
+                       "* You may not have permission to access the directory\n" \
+                       "* Recursive staging may be prohibited.\n" \
+                       "\nTry the same command without --recursive. If that works," \
+                       "the dCache system does not allow you to stage recursively." \
+                       "If you need recursion, ask your dCache admins to set" \
+                       "'bulk.allowed-directory-expansion=ALL'."
+          ;;
+        TARGETS )
+          echo -e 1>&2 "Operation failed. Possible causes:\n" \
+                      "* You may not have permission to access the directory\n" \
+                      "* Staging or unstaging a directory may be prohibited.\n" \
+                      "\nTry to stage a single file in the directory. If that works," \
+                      "the dCache system does not allow you to stage directories." \
+                      "If you need to stage directories, ask your dCache admins to set" \
+                      "'bulk.allowed-directory-expansion=TARGETS', or" \
+                      "'bulk.allowed-directory-expansion=ALL' in case you want" \
+                      "to stage recursively."
+          ;;
+        NONE )
+          echo -e 1>&2 "Operation failed. You may not have permission to access the file(s)."
+          ;;
+      esac
       exit 1
       ;;
     HTTP_CODE_2* )
@@ -1531,6 +1543,11 @@ bulk_request() {
       # ToDo: explain to user what to do with the request-url, see issue #86
       ;;
     * )
+      # Something else went wrong; could be
+      # 400 (bad request)
+      # 401 (unauthorized)
+      # 429 (too many requests)
+      # 500 (internal server error)
       echo 1>&2 -e "ERROR: operation failed. See details below:\n\n$response"
       exit 1
       ;;
