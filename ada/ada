@@ -1100,8 +1100,9 @@ pathtype () {
   # REGULAR = file
   # LINK    = symbolic link
   # <empty> = something went wrong... no permission?
+  local path="$1"
+  encoded_path=$(urlencode "$path")
   local result
-  encoded_path=$(urlencode "$1")
   command='$debug && set -x
           curl "${curl_authorization[@]}" \
           -H "accept: application/json" \
@@ -1491,16 +1492,66 @@ bulk_request() {
   target=${target%?}]
   data="{\"activity\": \"${activity}\", \"arguments\": ${arguments}, \"target\": ${target}, \"expand_directories\": \"${expand}\"}"
   $debug || echo "$target  "
-  (
-    $debug && set -x   # If --debug is specified, show curl command
-    curl "${curl_authorization[@]}" \
-         "${curl_options_common[@]}" \
-         "${curl_options_post[@]}" \
-         -X POST "$api/bulk-requests" \
-         -d "${data}" \
-         --dump-header - \
-    | grep -e request-url -e Date | tee -a "${requests_log}"
-  )
+  # Elsewhere, we do 'set -x' in a subshell, but here we need to catch the return headers.
+  $debug && set -x   # If --debug is specified, show curl command
+  response=$(curl "${curl_authorization[@]}" \
+                  "${curl_options_common[@]}" \
+                  "${curl_options_post[@]}" \
+                  -X POST "$api/bulk-requests" \
+                  -d "${data}" \
+                  --write-out "\nHTTP_CODE_%{http_code}" \
+                  --dump-header -
+            )
+  # Stop showing commands
+  $debug && set +x
+  # Process the result based on the HTTP return code
+  status=$(echo "$response" | grep '^HTTP_CODE_')    # HTTP return code
+  $debug && echo 1>&2 "Returned HTTP status: $status"
+  # 403 could mean recursion is not allowed in dCache. Might become 422 in future.
+  # See also https://github.com/dCache/dcache/issues/7892
+  case $status in
+    HTTP_CODE_403 | HTTP_CODE_422 )
+      case $expand in
+        ALL )
+          echo -e 1>&2 "Operation failed. Possible causes:\n" \
+                       "* You may not have permission to access the directory\n" \
+                       "* Recursive staging may be prohibited.\n" \
+                       "\nTry the same command without --recursive. If that works," \
+                       "the dCache system does not allow you to stage recursively." \
+                       "If you need recursion, ask your dCache admins to set" \
+                       "'bulk.allowed-directory-expansion=ALL'."
+          ;;
+        TARGETS )
+          echo -e 1>&2 "Operation failed. Possible causes:\n" \
+                      "* You may not have permission to access the directory\n" \
+                      "* Staging or unstaging a directory may be prohibited.\n" \
+                      "\nTry to stage a single file in the directory. If that works," \
+                      "the dCache system does not allow you to stage directories." \
+                      "If you need to stage directories, ask your dCache admins to set" \
+                      "'bulk.allowed-directory-expansion=TARGETS', or" \
+                      "'bulk.allowed-directory-expansion=ALL' in case you want" \
+                      "to stage recursively."
+          ;;
+        NONE )
+          echo -e 1>&2 "Operation failed. You may not have permission to access the file(s)."
+          ;;
+      esac
+      exit 1
+      ;;
+    HTTP_CODE_2* )
+      echo "$response" | grep -e request-url -e Date | tee -a "${requests_log}"
+      # ToDo: explain to user what to do with the request-url, see issue #86
+      ;;
+    * )
+      # Something else went wrong; could be
+      # 400 (bad request)
+      # 401 (unauthorized)
+      # 429 (too many requests)
+      # 500 (internal server error)
+      echo 1>&2 -e "ERROR: operation failed. See details below:\n\n$response"
+      exit 1
+      ;;
+  esac
   $debug && echo "Information about bulk request is logged in $requests_log."
   {
     echo "activity: $activity"
