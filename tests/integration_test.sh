@@ -451,6 +451,14 @@ oneTimeSetUp() {
     token=$(sed -n 's/^bearer_token *= *//p' "$token_file")
     check_token "$token"
     error=$?
+    # Check if root: caveat is set correctly.
+    ada/ada --viewtoken --tokenfile "$token_file" | grep "cid root"  >/dev/null
+    result=$?
+    if [ $chroot = true ] && [ $result -eq 1 ] ; then # expecting macaroon with root: caveat
+        error=1
+    elif [ $chroot = false ] && [ $result -eq 0 ] ; then # expecting macaroon without root: caveat    
+        error=1
+    fi
     if [ $error -eq 1 ]; then
         echo "The tests expect a valid macaroon. Please enter your CUA credentials to create one."
         if [ $chroot = true ] ; then
@@ -464,6 +472,7 @@ oneTimeSetUp() {
         fi
         token=$(sed -n 's/^bearer_token *= *//p' "$token_file")
     fi
+
     # curl options for various activities;
     curl_options_common=(
                         -H "accept: application/json"
@@ -479,7 +488,6 @@ oneTimeSetUp() {
     # Refer to the file with the header
     curl_authorization=( "--config" "$curl_authorization_header_file" )
 
- 
     # Define test files and directories
     dirname="integration_test"
     testfile="1GBfile"
