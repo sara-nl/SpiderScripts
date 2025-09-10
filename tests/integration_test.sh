@@ -340,7 +340,6 @@ test_ada_delete_channels() {
     done
 }
 
-
 # Stage a file
 test_ada_stage_file() {
     command="ada/ada --tokenfile ${token_file} --stage /${tape_path}/${dirname}/${testfile} --api ${api}"
@@ -369,6 +368,23 @@ test_ada_unstage_file() {
     sleep 2 # needed if request is still RUNNING
     state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[0].state'`
     assertEquals "State of target:" "COMPLETED" $state
+}
+
+# Stage a directory
+test_ada_stage_dir() {
+    command="ada/ada --tokenfile ${token_file} --stage /${tape_path}/${dirname} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
+    assertNotNull "No request-url found" $request_url || return
+    sleep 2 # needed if request is still RUNNING
+    state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[0].state'`
+    assertEquals "State of target:" "SKIPPED" $state
+    state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[1].state'`
+    assertEquals "State of target:" "COMPLETED" $state    
 }
 
 # Stages files in file_list
@@ -435,15 +451,28 @@ oneTimeSetUp() {
     token=$(sed -n 's/^bearer_token *= *//p' "$token_file")
     check_token "$token"
     error=$?
+    # Check if root: caveat is set correctly.
+    ada/ada --viewtoken --tokenfile "$token_file" | grep "cid root"  >/dev/null
+    result=$?
+    if [ $chroot = true ] && [ $result -eq 1 ] ; then # expecting macaroon with root: caveat
+        error=1
+    elif [ $chroot = false ] && [ $result -eq 0 ] ; then # expecting macaroon without root: caveat    
+        error=1
+    fi
     if [ $error -eq 1 ]; then
         echo "The tests expect a valid macaroon. Please enter your CUA credentials to create one."
-        get-macaroon --url "${webdav_url}"/"${user_path}" --duration P1D --user $user --permissions DOWNLOAD,UPLOAD,DELETE,MANAGE,LIST,READ_METADATA,UPDATE_METADATA,STAGE --output rclone $(basename "${token_file%.*}")
+        if [ $chroot = true ] ; then
+           get-macaroon --chroot --url "${webdav_url}"/"${user_path}" --duration P1D --user $user --permissions DOWNLOAD,UPLOAD,DELETE,MANAGE,LIST,READ_METADATA,UPDATE_METADATA,STAGE --output rclone $(basename "${token_file%.*}")
+        else
+           get-macaroon --url "${webdav_url}"/"${user_path}" --duration P1D --user $user --permissions DOWNLOAD,UPLOAD,DELETE,MANAGE,LIST,READ_METADATA,UPDATE_METADATA,STAGE --output rclone $(basename "${token_file%.*}")
+        fi
         if [ $? -eq 1 ]; then 
             echo "Failed to create a macaroon. Aborting." 
             exit 
         fi
         token=$(sed -n 's/^bearer_token *= *//p' "$token_file")
     fi
+
     # curl options for various activities;
     curl_options_common=(
                         -H "accept: application/json"
@@ -459,7 +488,6 @@ oneTimeSetUp() {
     # Refer to the file with the header
     curl_authorization=( "--config" "$curl_authorization_header_file" )
 
- 
     # Define test files and directories
     dirname="integration_test"
     testfile="1GBfile"
