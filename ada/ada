@@ -228,11 +228,9 @@ usage() {
 	      The pinned (sticky) capacity can be calculated with:
 	      "ada ... | jq '.total - .free - .precious - .removable'"
 
-	  --quota <all|own>
-	      Shows storage quotas, for tape (custodial) and for disk (replica).
-	      With 'all' (default), shows all quotas.
-	      With 'own', shows only quotas for your own user ID and/or
-	      your primary group ID.
+	  --quota
+	      Shows your storage quotas, for tape (custodial) and for disk (replica),
+	      user based as well as group based.
 
 
 	Configuration files:
@@ -678,22 +676,6 @@ get_args() {
         ;;
       --quota )
         command='quota'
-        case $2 in
-          own | all )
-            # Quota scope has been specified by user.
-            quota_scope="$2"
-            shift
-            ;;
-          --* | '' )
-            # Next argument is another option or absent; not a scope.
-            # Use default scope 'all'
-            quota_scope=all
-            ;;
-          * )
-            echo 1>&2 "ERROR: '$2' is not a valid scope for --quota. Use 'own' or 'all' (default)"
-            exit 1
-            ;;
-        esac
         shift
         ;;
       --igtf )
@@ -1920,19 +1902,6 @@ get_dcache_versions () {
 
 
 get_quota () {
-  local quota_scope="$1"
-  case $quota_scope in
-    own | '' )
-      query_parameter='user=true'
-      ;;
-    all )
-      query_parameter='user=false'
-      ;;
-    * )
-      echo 1>&2 "ERROR: quota scope is $quota_scope, but should be either 'own' or 'all'."
-      exit 1
-      ;;
-  esac
   # Show quotas, for disk and tape, and for user(s) and group(s).
   # We use bash arrays for this. For that, we need a fresh bash.
   if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
@@ -1951,7 +1920,7 @@ get_quota () {
                     "${curl_options_common[@]}" \
                     --silent --show-error \
                     --write-out "\nHTTP_CODE_%{http_code}" \
-                    -X GET "$api/quota/${quota_type}?${query_parameter}" 2>&1
+                    -X GET "$api/quota/${quota_type}?user=true" 2>&1
               )
     status=$(echo "$response" | grep '^HTTP_CODE')    # HTTP return code
     case $status in
@@ -2013,14 +1982,7 @@ get_quota () {
     # No quota found. If user ran `ada --quota`, show message.
     # If the user ran `ada --whoami`, we don't need to show a message; it would only be confusing.
     if [ "$command" == "quota" ] ; then
-      case $quota_scope in
-        own )
-          echo 1>&2 "You do not have any quota set on your user ID or primary group ID."
-          ;;
-        all )
-          echo 1>&2 "No quota found on this dCache system."
-          ;;
-      esac
+      echo 1>&2 "You do not have any quota set on your user ID or primary group ID."
     fi
   fi
 }
@@ -2405,7 +2367,7 @@ api_call () {
              -X GET "$api/user" \
         | jq .
       )
-      get_quota own
+      get_quota
       ;;
     list )
       type=$(pathtype "$path")
@@ -2956,7 +2918,7 @@ api_call () {
       fi
       ;;
     quota )
-      get_quota "$quota_scope"
+      get_quota
       ;;
     * )
       echo "Command '$command' is not implemented (yet)."
