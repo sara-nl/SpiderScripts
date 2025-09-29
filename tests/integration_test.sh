@@ -5,7 +5,7 @@
 # Check if version is as expected
 test_ada_version() {
     result=`ada/ada --version`
-    assertEquals "Check ada version:" "v3.0" ${result}
+    assertEquals "Check ada version:" "v3.1" ${result}
 }
 
 # Check whoami
