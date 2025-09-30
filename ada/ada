@@ -376,6 +376,21 @@ set_defaults() {
 }
 # End set_defaults()
 
+get_version() {
+  # Returns the version of the script
+  _VERSION="v3.0+"
+  git_dir=$(dirname "${script_dir}")
+
+  if [[ -d "${git_dir}/.git" ]]; then
+    # Use git describe to get version
+    _VERSION=$(git --git-dir="${git_dir}/.git" describe --tags --abbrev=0 2>/dev/null || echo "v3.0+")
+  elif [[ -d "/etc/ada-release" ]]; then
+    # Use /etc/ada-release to get script version (created by Ansible or so)
+    _VERSION=$(cat /etc/ada-release)
+  fi
+
+  echo "${_VERSION}"
+}
 #
 # Process command line arguments
 #
@@ -390,9 +405,7 @@ get_args() {
         usage
         ;;
       --version )
-        git_dir=$(dirname "${script_dir}")
-        _VERSION_PLACEHOLDER=$(git --git-dir="${git_dir}/.git" describe --tags --abbrev=0 2>/dev/null || echo "v3.0+")
-        echo "${_VERSION_PLACEHOLDER}"
+        get_version
         exit 1
         ;;
       --tokenfile )
