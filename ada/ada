@@ -175,8 +175,9 @@ usage() {
 	  --stage --from-file <file-list>
 	      Stage files or directories in the list.
 
-	  --unstage <file>
+	  --unstage <file> [--request-id <request-id>]
 	      Release file so dCache may purge its online replica.
+	      If --request-id is given, release only the associated pin (not all pins)
 	  --unstage <directory> [--recursive]
 	      Release files in directory.
 	  --unstage --from-file <file-list>
@@ -308,6 +309,7 @@ set_defaults() {
   script_dir=$(dirname "$0")
   command=
   path=
+  request_id=
   recursive=false
   force=false
   resume=false
@@ -607,6 +609,10 @@ get_args() {
           shift ; shift
         fi
         ;;
+      --request-id )
+        request_id="$2"
+        shift ; shift
+        ;;        
       --events )
         command='events'
         channel_name="$2"
@@ -1430,6 +1436,7 @@ bulk_request() {
   local activity="$1"
   local pathlist="$2"
   local recursive="$3"
+  local request_id="$4"
   if [ "$from_file" == false ] ; then
     local filepath="$2"
     type=$(pathtype "$filepath")
@@ -1465,7 +1472,12 @@ bulk_request() {
     PIN   )
       arguments="{\"lifetime\": \"${lifetime}\", \"lifetimeUnit\":\"${lifetime_unit}\"}" ;;
     UNPIN )
-      arguments="{}" ;;
+      if [ -z "$request_id" ] ; then
+         arguments="{}" 
+      else
+         arguments="{\"id\": \"${request_id}\"}"
+      fi
+      ;;
   esac
   target='['
   while read -r path ; do
@@ -2748,7 +2760,7 @@ api_call () {
         stage   )  activity='PIN'     ;;
         unstage )  activity='UNPIN'   ;;
       esac
-      bulk_request "$activity" "$pathlist" "$recursive"
+      bulk_request "$activity" "$pathlist" "$recursive" "$request_id"
       ;;
     events | report-staged )
       if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
