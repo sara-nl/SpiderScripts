@@ -391,7 +391,7 @@ test_ada_stage_dir() {
 
 # Unstage a directory based on request_id
 # Note: this function uses ${stdoutF} from previous function
-# So doe not overwrite in between
+# So do not overwrite in between
 test_ada_unstage_dir_request_id() {
     request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
     request_id=$(basename "$request_url")
