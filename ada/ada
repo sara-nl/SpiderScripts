@@ -1432,6 +1432,28 @@ delete_path () {
 }
 
 
+get_status_requestid () {
+  local request_id="$1"
+  command='$debug && set -x
+          curl "${curl_authorization[@]}" \
+          "${curl_options_common[@]}" \
+          -X GET "${api}"/bulk-requests/"${request_id}"'
+  if $dry_run ; then
+    echo "$command"
+  else
+    result=$(eval "$command")
+    # Check if the request ID is valid
+    valid=$(echo "$result" | jq 'has("uid")') 
+    if [[ $valid == 'true' ]] ; then
+      echo "$result"
+    else
+      echo "Error: the request ID '$request_id' is not valid"
+      return 1
+    fi
+  fi
+}
+
+
 bulk_request() {
   local activity="$1"
   local pathlist="$2"
@@ -1475,6 +1497,12 @@ bulk_request() {
       if [ -z "$request_id" ] ; then
          arguments="{}" 
       else
+         # check if request ID is valid, exit if invalid
+         get_status_requestid ${request_id} > /dev/null 2>&1
+         if [ $? == 1 ] ; then
+            echo 1>&2 "Error: cannot unstage, request ID invalid"
+            exit 1
+         fi
          arguments="{\"id\": \"${request_id}\"}"
       fi
       ;;
