@@ -381,10 +381,35 @@ test_ada_stage_dir() {
     request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
     assertNotNull "No request-url found" $request_url || return
     sleep 2 # needed if request is still RUNNING
+    # directory should be SKIPPED
     state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[0].state'`
     assertEquals "State of target:" "SKIPPED" $state
+    # file should COMPLETED   
     state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[1].state'`
     assertEquals "State of target:" "COMPLETED" $state    
+}
+
+# Unstage a directory based on request_id
+# Note: this function uses ${stdoutF} from previous function
+# So do not overwrite in between
+test_ada_unstage_dir_request_id() {
+    request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
+    request_id=$(basename "$request_url")
+    command="ada/ada --tokenfile ${token_file} --unstage /${tape_path}/${dirname}/${dirfile} --request-id ${request_id} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
+    assertNotNull "No request-url found" $request_url || return
+    sleep 2 # needed if request is still RUNNING
+    # directory should be SKIPPED    
+    state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[0].state'`
+    assertEquals "State of target:" "SKIPPED" $state
+    # file should COMPLETED      
+    state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[1].state'`
+    assertEquals "State of target:" "COMPLETED" $state
 }
 
 # Stages files in file_list
