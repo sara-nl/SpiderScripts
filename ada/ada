@@ -337,9 +337,10 @@ set_defaults() {
   for configfile in "${configfiles[@]}" ; do
     if [ -f "$configfile" ] ; then
       # Before loading, check permissions. Source file must never be world writable!
-      permissions=$(get_permissions "$configfile") || exit 1
+      real_configfile=$(realpath "$configfile")
+      permissions=$(get_permissions "$real_configfile") || exit 1
       if grep '^........w.$' <<<"$permissions" ; then
-        echo 1>&2 "ERROR: Config file '$configfile' is world writable. This is a security risk."
+        echo 1>&2 "ERROR: Config file '$real_configfile' is world writable. This is a security risk."
         exit 1
       fi
       source "$configfile"
@@ -2100,13 +2101,14 @@ validate_input() {
           exit 1
         fi
         # Tokenfile must never be world readable or writable!
-        if get_permissions "$tokenfile" | grep '^........w.$' ; then
-          echo 1>&2 "ERROR: Tokenfile '$tokenfile' is world writable." \
+        real_tokenfile=$(realpath "$tokenfile")
+        if get_permissions "$real_tokenfile" | grep '^........w.$' ; then
+          echo 1>&2 "ERROR: Tokenfile '$real_tokenfile' is world writable." \
                     "This may be unsafe on shared systems. Use chmod to change the permissions."
           exit 1
         fi
-        if get_permissions "$tokenfile" | grep '^.......r..$' ; then
-          echo 1>&2 "ERROR: Tokenfile '$tokenfile' is world readable." \
+        if get_permissions "$real_tokenfile" | grep '^.......r..$' ; then
+          echo 1>&2 "ERROR: Tokenfile '$real_tokenfile' is world readable." \
                     "This may be unsafe on shared systems. Use chmod to change the permissions."
           exit 1
         fi
@@ -2144,13 +2146,14 @@ validate_input() {
         exit 1
       fi
       # Curl's netrc file shouldn't be world readable or writable!
-      if get_permissions "$netrcfile" | grep '^........w.$' ; then
-        echo 1>&2 "ERROR: Curl's config file '$netrcfile' is world writable." \
+      real_netrcfile=$(realpath "$netrcfile")
+      if get_permissions "$real_netrcfile" | grep '^........w.$' ; then
+        echo 1>&2 "ERROR: Curl's config file '$real_netrcfile' is world writable." \
                   "This may be unsafe on shared systems. Use chmod to change the permissions."
         exit 1
       fi
-      if get_permissions "$netrcfile" | grep '^.......r..$' ; then
-        echo 1>&2 "ERROR: Curl's config file '$netrcfile' is world readable." \
+      if get_permissions "$real_netrcfile" | grep '^.......r..$' ; then
+        echo 1>&2 "ERROR: Curl's config file '$real_netrcfile' is world readable." \
                   "This may be unsafe on shared systems. Use chmod to change the permissions."
         exit 1
       fi
