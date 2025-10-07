@@ -1522,7 +1522,6 @@ bulk_request() {
   done <<<"$pathlist"
   target=${target%?}]
   data="{\"activity\": \"${activity}\", \"arguments\": ${arguments}, \"target\": ${target}, \"expand_directories\": \"${expand}\"}"
-  $debug || echo "$target  "
   # Elsewhere, we do 'set -x' in a subshell, but here we need to catch the return headers.
   $debug && set -x   # If --debug is specified, show curl command
   response=$(curl "${curl_authorization[@]}" \
@@ -1570,7 +1569,14 @@ bulk_request() {
       exit 1
       ;;
     HTTP_CODE_2* )
-      echo "$response" | grep -e request-url -e Date | tee -a "${requests_log}"
+      echo "$response" | grep -e request-url -e Date >> "${requests_log}"
+      request_url=$(echo "$response" | grep -e request-url)
+      request_id=$(basename "${request_url}")
+      echo "Information about bulk request is logged in $requests_log"      
+      echo "To check status of request, paste request URL in browser:"
+      echo "   ${request_url}"      
+      echo "Or use command:"
+      echo "   ada --stat-request ${request_id}"
       # ToDo: explain to user what to do with the request-url, see issue #86
       ;;
     * )
@@ -1583,7 +1589,6 @@ bulk_request() {
       exit 1
       ;;
   esac
-  $debug && echo "Information about bulk request is logged in $requests_log."
   {
     echo "activity: $activity"
     echo "target: $target" | sed 's/,/,\n         /g'
