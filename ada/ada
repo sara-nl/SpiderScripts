@@ -183,6 +183,9 @@ usage() {
 	  --unstage --from-file <file-list>
 	      Release files in the list.
 
+    --stat-request <request-id>
+	      Show status of bulk request for given request-id
+
 	  --events <channel-name> <path-to-follow> [--resume] [--force] [--recursive] [--timeout s]
 	      Subscribe to changes in the given direcory,
 	      using server-sent events (SSE).
@@ -613,7 +616,12 @@ get_args() {
       --request-id )
         request_id="$2"
         shift ; shift
-        ;;        
+        ;;
+      --stat-request )
+        command='stat-request'
+        request_id="$2"
+        shift ; shift
+        ;;  
       --events )
         command='events'
         channel_name="$2"
@@ -1514,7 +1522,6 @@ bulk_request() {
   done <<<"$pathlist"
   target=${target%?}]
   data="{\"activity\": \"${activity}\", \"arguments\": ${arguments}, \"target\": ${target}, \"expand_directories\": \"${expand}\"}"
-  $debug || echo "$target  "
   # Elsewhere, we do 'set -x' in a subshell, but here we need to catch the return headers.
   $debug && set -x   # If --debug is specified, show curl command
   response=$(curl "${curl_authorization[@]}" \
@@ -1562,7 +1569,14 @@ bulk_request() {
       exit 1
       ;;
     HTTP_CODE_2* )
-      echo "$response" | grep -e request-url -e Date | tee -a "${requests_log}"
+      echo "$response" | grep -e request-url -e Date >> "${requests_log}"
+      request_url=$(echo "$response" | grep -e request-url)
+      request_id=$(basename "${request_url}")
+      echo "Information about bulk request is logged in $requests_log"      
+      echo "To check status of request, paste request URL in browser:"
+      echo "   ${request_url}"      
+      echo "Or use command:"
+      echo "   ada --stat-request ${request_id}"
       # ToDo: explain to user what to do with the request-url, see issue #86
       ;;
     * )
@@ -1575,7 +1589,6 @@ bulk_request() {
       exit 1
       ;;
   esac
-  $debug && echo "Information about bulk request is logged in $requests_log."
   {
     echo "activity: $activity"
     echo "target: $target" | sed 's/,/,\n         /g'
@@ -2294,6 +2307,12 @@ validate_input() {
         exit 1
       fi
       ;;
+    stat-request )
+      if [[ -z $request_id || $request_id =~ ^-- ]] ; then
+        echo 1>&2 "ERROR: command $command requires a request-id."
+        exit 1
+      fi
+      ;;    
     viewtoken )
       if [ -z "$token" ] ; then
         echo 1>&2 "ERROR: command --viewtoken requires a token, but no token was found."
@@ -2792,6 +2811,9 @@ api_call () {
         unstage )  activity='UNPIN'   ;;
       esac
       bulk_request "$activity" "$pathlist" "$recursive" "$request_id"
+      ;;
+    stat-request )
+      get_status_requestid "$request_id"
       ;;
     events | report-staged )
       if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
