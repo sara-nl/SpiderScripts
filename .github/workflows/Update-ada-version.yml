@@ -21,7 +21,9 @@ jobs:
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             VERSION="${GITHUB_REF_NAME}"
           elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            VERSION=$(git rev-parse --abbrev-ref HEAD)
+            BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            COMMIT=$(git rev-parse --short HEAD)
+            VERSION="${BRANCH}+${COMMIT}"
           else
             VERSION="${GITHUB_REF_NAME}"
           fi
