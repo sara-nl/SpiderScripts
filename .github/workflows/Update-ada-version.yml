@@ -1,0 +1,41 @@
+name: Update ada version
+
+on:
+  push:
+    branches:
+      - '**'     # runs on any branch push
+    tags:
+      - 'v*'     # runs on tag push
+  workflow_dispatch:   # manual trigger possible
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # ensure all tags available
+
+      - name: Determine version or branch
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            VERSION=$(git rev-parse --abbrev-ref HEAD)
+          else
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          echo "Using version identifier: ${VERSION}"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Update version in ada script
+        run: |
+          sed -i "s/ADA_VERSION=.*/ADA_VERSION=\"${VERSION}\"/" ada/ada
+
+      - name: Commit and push updated ada script
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ada/ada
+          git commit -m "Set version to ${VERSION}" || echo "No changes"
+          git push
