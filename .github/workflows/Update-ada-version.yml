@@ -20,12 +20,10 @@ jobs:
         run: |
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             VERSION="${GITHUB_REF_NAME}"
-          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+          else
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
             COMMIT=$(git rev-parse --short HEAD)
             VERSION="${BRANCH}+${COMMIT}"
-          else
-            VERSION="${GITHUB_REF_NAME}"
           fi
           echo "Using version identifier: ${VERSION}"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
