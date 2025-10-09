@@ -296,7 +296,7 @@ get_permissions () {
 #
 set_defaults() {
   # The ADA_VERSION value will be automatically updated by Github Action Update-ada-version.yml
-  ADA_VERSION="123-provide-reliable-ada---version"
+  ADA_VERSION="unknown"
   api=
   debug=false
   dry_run=false
