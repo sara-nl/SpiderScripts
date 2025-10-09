@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'   # run only when a version tag is pushed (like v1.2.3)
+  workflow_dispatch:   # 👈 allows manual trigger in GitHub UI
 
 jobs:
   update-version:
