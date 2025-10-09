@@ -3,8 +3,8 @@ name: Sync ada-version file
 on:
   push:
     tags:
-      - 'v*'   # run only when a version tag is pushed (like v1.2.3)
-  workflow_dispatch:   # 👈 allows manual trigger in GitHub UI
+      - 'v*'        # run automatically when a tag is pushed
+  workflow_dispatch:  # allow manual trigger in Github UI
 
 jobs:
   update-version:
@@ -12,10 +12,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0   # we need full tag history
 
-      - name: Extract tag
-        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+      - name: Determine version
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            # Get the latest tag from Git
+            VERSION=$(git describe --tags --abbrev=0)
+          else
+            # Use the tag that triggered the workflow
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          echo "Detected version: ${VERSION}"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
       - name: Write ada-version file
         run: |
