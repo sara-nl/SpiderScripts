@@ -22,8 +22,7 @@ jobs:
             VERSION="${GITHUB_REF_NAME}"
           else
             BRANCH=$(git rev-parse --abbrev-ref HEAD)
-            COMMIT=$(git rev-parse --short HEAD)
-            VERSION="${BRANCH}+${COMMIT}"
+            VERSION="${BRANCH}"
           fi
           echo "Using version identifier: ${VERSION}"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
