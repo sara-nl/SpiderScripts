@@ -303,6 +303,7 @@ set_defaults() {
   dry_run=false
   channel_timeout=3600
   auth_method=
+  auth_file=
   certdir=${X509_CERT_DIR:-/etc/grid-security/certificates}
   igtf=true
   lifetime=7
@@ -371,7 +372,7 @@ set_defaults() {
   fi
   if [ -n "$ada_tokenfile" ] ; then
     tokenfile="$ada_tokenfile"
-    auth_method=token
+    auth_method=tokenfile
     token_debug_info="Token source: \$ada_tokenfile=$ada_tokenfile"
   fi
   if [ -n "$BEARER_TOKEN" ] ; then
@@ -402,8 +403,10 @@ get_args() {
         exit 1
         ;;
       --tokenfile )
-        auth_method=token
+        auth_method=tokenfile
         tokenfile="$2"
+        #Check if authentication file is passed as argument
+        auth_file="$2"  
         token_debug_info="Token source: --tokenfile $tokenfile"
         shift ; shift
         ;;
@@ -417,6 +420,8 @@ get_args() {
           * )
             # This must be a file name
             netrcfile="$2"
+            #Check if authentication file is passed as argument
+            auth_file="$2"
             shift
             ;;
         esac
@@ -432,6 +437,8 @@ get_args() {
           * )
             # This must be a file name
             proxyfile="$2"
+            #Check if authentication file is passed as argument
+            auth_file="$2"            
             shift
             ;;
         esac
@@ -983,7 +990,7 @@ check_authentication() {
     proxy )
       echo "Proxy file: $proxyfile"
       ;;
-    token )
+    token | tokenfile )
       view_token "$token" "$token_debug_info"
       ;;
     * )
@@ -1576,8 +1583,12 @@ bulk_request() {
       echo "To check status of request, paste request URL in browser:"
       echo "   ${request_url}"      
       echo "Or use command:"
-      echo "   ada --stat-request ${request_id}"
-      # ToDo: explain to user what to do with the request-url, see issue #86
+      if  [ -n "$auth_file" ] ; then
+         echo "   $0 --stat-request $request_id --api $api --$auth_method $auth_file" | tr -d '\r'
+
+      else
+         echo "   $0 --stat-request $request_id --api $api" | tr -d '\r'
+      fi
       ;;
     * )
       # Something else went wrong; could be
@@ -2147,7 +2158,7 @@ validate_input() {
   fi
 
   case $auth_method in
-    token )
+    token | tokenfile )
       if [ -n "$tokenfile" ] ; then
         if ! [ -f "$tokenfile" ] ; then
           echo 1>&2 "ERROR: specified tokenfile does not exist."
@@ -2357,7 +2368,7 @@ validate_input() {
 #
 construct_auth() {
   case $auth_method in
-    token )
+    token | tokenfile )
       # We can't specify the token as a command line argument,
       # because others could read that with the ps command.
       # So we have to put the authorization header in a temporary file.
