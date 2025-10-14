@@ -1463,7 +1463,7 @@ get_status_requestid () {
     if [[ $valid == 'true' ]] ; then
       echo "$result"
     else
-      echo "Error: the request ID '$request_id' is not valid"
+      echo 1>&2 "Error: the request ID '$request_id' is not valid"
       return 1
     fi
   fi
