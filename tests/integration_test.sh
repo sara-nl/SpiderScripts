@@ -390,9 +390,10 @@ test_ada_stage_dir() {
 }
 
 # Unstage a directory based on request_id
+# And get status of request_id
 # Note: this function uses ${stdoutF} from previous function
 # So do not overwrite in between
-test_ada_unstage_dir_request_id() {
+test_ada_request_id() {
     request_url=`grep "request-url" "${stdoutF}" | awk '{print $2}' | tr -d '\r'`
     request_id=$(basename "$request_url")
     command="ada/ada --tokenfile ${token_file} --unstage /${tape_path}/${dirname}/${dirfile} --request-id ${request_id} --api ${api}"
@@ -410,6 +411,17 @@ test_ada_unstage_dir_request_id() {
     # file should COMPLETED      
     state=`curl -X GET "${request_url}" -H "accept: application/json" -H "Authorization: Bearer $token" | jq -r '.targets[1].state'`
     assertEquals "State of target:" "COMPLETED" $state
+
+    # Test status of request id, we do this in same test function because we need same request-id
+    command="ada/ada --tokenfile ${token_file} --stat-request ${request_id} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+    uid=`cat "${stdoutF}" | jq -r '.uid'`
+    echo $uid
+    assertEquals ${uid} ${request_id}
 }
 
 # Stages files in file_list

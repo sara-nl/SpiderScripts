@@ -183,6 +183,9 @@ usage() {
 	  --unstage --from-file <file-list>
 	      Release files in the list.
 
+    --stat-request <request-id>
+	      Show status of bulk request for given request-id
+
 	  --events <channel-name> <path-to-follow> [--resume] [--force] [--recursive] [--timeout s]
 	      Subscribe to changes in the given direcory,
 	      using server-sent events (SSE).
@@ -295,11 +298,13 @@ get_permissions () {
 # Set default values and initialize variables
 #
 set_defaults() {
+  args=
   api=
   debug=false
   dry_run=false
   channel_timeout=3600
   auth_method=
+  auth_file=
   certdir=${X509_CERT_DIR:-/etc/grid-security/certificates}
   igtf=true
   lifetime=7
@@ -368,7 +373,7 @@ set_defaults() {
   fi
   if [ -n "$ada_tokenfile" ] ; then
     tokenfile="$ada_tokenfile"
-    auth_method=token
+    auth_method=tokenfile
     token_debug_info="Token source: \$ada_tokenfile=$ada_tokenfile"
   fi
   if [ -n "$BEARER_TOKEN" ] ; then
@@ -387,6 +392,7 @@ get_args() {
   if [ -z "$1" ] ; then
     usage
   fi
+  args=("$@")
   while [ $# -gt 0 ] ; do
     case "$1" in
       --help | -help | -h )
@@ -399,8 +405,10 @@ get_args() {
         exit 1
         ;;
       --tokenfile )
-        auth_method=token
+        auth_method=tokenfile
         tokenfile="$2"
+        #Check if authentication file is passed as argument
+        auth_file="$2"  
         token_debug_info="Token source: --tokenfile $tokenfile"
         shift ; shift
         ;;
@@ -414,6 +422,8 @@ get_args() {
           * )
             # This must be a file name
             netrcfile="$2"
+            #Check if authentication file is passed as argument
+            auth_file="$2"
             shift
             ;;
         esac
@@ -429,6 +439,8 @@ get_args() {
           * )
             # This must be a file name
             proxyfile="$2"
+            #Check if authentication file is passed as argument
+            auth_file="$2"            
             shift
             ;;
         esac
@@ -613,7 +625,12 @@ get_args() {
       --request-id )
         request_id="$2"
         shift ; shift
-        ;;        
+        ;;
+      --stat-request )
+        command='stat-request'
+        request_id="$2"
+        shift ; shift
+        ;;  
       --events )
         command='events'
         channel_name="$2"
@@ -975,7 +992,7 @@ check_authentication() {
     proxy )
       echo "Proxy file: $proxyfile"
       ;;
-    token )
+    token | tokenfile )
       view_token "$token" "$token_debug_info"
       ;;
     * )
@@ -1448,7 +1465,7 @@ get_status_requestid () {
     if [[ $valid == 'true' ]] ; then
       echo "$result"
     else
-      echo "Error: the request ID '$request_id' is not valid"
+      echo 1>&2 "Error: the request ID '$request_id' is not valid"
       return 1
     fi
   fi
@@ -1514,7 +1531,6 @@ bulk_request() {
   done <<<"$pathlist"
   target=${target%?}]
   data="{\"activity\": \"${activity}\", \"arguments\": ${arguments}, \"target\": ${target}, \"expand_directories\": \"${expand}\"}"
-  $debug || echo "$target  "
   # Elsewhere, we do 'set -x' in a subshell, but here we need to catch the return headers.
   $debug && set -x   # If --debug is specified, show curl command
   response=$(curl "${curl_authorization[@]}" \
@@ -1562,8 +1578,21 @@ bulk_request() {
       exit 1
       ;;
     HTTP_CODE_2* )
-      echo "$response" | grep -e request-url -e Date | tee -a "${requests_log}"
-      # ToDo: explain to user what to do with the request-url, see issue #86
+      echo "$response" | grep -e request-url -e Date >> "${requests_log}"
+      request_url=$(echo "$response" | grep -e request-url)
+      request_id=$(basename "${request_url}")
+      echo "Information about bulk request is logged in $requests_log"      
+      echo "To check status of request, paste request URL in browser:"
+      echo "   ${request_url}"      
+      echo "Or use command:"
+      cmd_args=""
+      if [[ "${args[@]}" =~ "api" ]]; then
+         cmd_args="--api $api"
+      fi
+      if [[ "${args[@]}" =~ "netrc" || "${args[@]}" =~ "proxy" || "${args[@]}" =~ "tokenfile" ]]; then
+         cmd_args="$cmd_args --$auth_method $auth_file"
+      fi 
+      echo "   $0 --stat-request $request_id $cmd_args" | tr -d '\r'  
       ;;
     * )
       # Something else went wrong; could be
@@ -1575,7 +1604,6 @@ bulk_request() {
       exit 1
       ;;
   esac
-  $debug && echo "Information about bulk request is logged in $requests_log."
   {
     echo "activity: $activity"
     echo "target: $target" | sed 's/,/,\n         /g'
@@ -2134,7 +2162,7 @@ validate_input() {
   fi
 
   case $auth_method in
-    token )
+    token | tokenfile )
       if [ -n "$tokenfile" ] ; then
         if ! [ -f "$tokenfile" ] ; then
           echo 1>&2 "ERROR: specified tokenfile does not exist."
@@ -2294,6 +2322,12 @@ validate_input() {
         exit 1
       fi
       ;;
+    stat-request )
+      if [[ -z $request_id || $request_id =~ ^-- ]] ; then
+        echo 1>&2 "ERROR: command $command requires a request-id."
+        exit 1
+      fi
+      ;;    
     viewtoken )
       if [ -z "$token" ] ; then
         echo 1>&2 "ERROR: command --viewtoken requires a token, but no token was found."
@@ -2338,7 +2372,7 @@ validate_input() {
 #
 construct_auth() {
   case $auth_method in
-    token )
+    token | tokenfile )
       # We can't specify the token as a command line argument,
       # because others could read that with the ps command.
       # So we have to put the authorization header in a temporary file.
@@ -2792,6 +2826,9 @@ api_call () {
         unstage )  activity='UNPIN'   ;;
       esac
       bulk_request "$activity" "$pathlist" "$recursive" "$request_id"
+      ;;
+    stat-request )
+      get_status_requestid "$request_id"
       ;;
     events | report-staged )
       if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
