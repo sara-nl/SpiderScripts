@@ -18,12 +18,7 @@ jobs:
 
       - name: Determine version or branch
         run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            VERSION="${GITHUB_REF_NAME}"
-          else
-            BRANCH=$(git rev-parse --abbrev-ref HEAD)
-            VERSION="${BRANCH}"
-          fi
+          VERSION="${GITHUB_REF_NAME}"
           echo "Using version identifier: ${VERSION}"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
