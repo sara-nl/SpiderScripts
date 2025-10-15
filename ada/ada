@@ -298,6 +298,10 @@ get_permissions () {
 # Set default values and initialize variables
 #
 set_defaults() {
+  # The ADA_VERSION value will be automatically updated by Github action Update-ada-version.yml
+  # For a release, it will contain the version number (like v3.1).
+  # For a branch, it will contain the branch name.
+  ADA_VERSION="123-provide-reliable-ada---version"
   args=
   api=
   debug=false
@@ -399,9 +403,7 @@ get_args() {
         usage
         ;;
       --version )
-        git_dir=$(dirname "${script_dir}")
-        _VERSION_PLACEHOLDER=$(git --git-dir="${git_dir}/.git" describe --tags --abbrev=0 2>/dev/null || echo "v3.0+")
-        echo "${_VERSION_PLACEHOLDER}"
+        echo "$ADA_VERSION"
         exit 1
         ;;
       --tokenfile )
