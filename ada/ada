@@ -298,6 +298,7 @@ get_permissions () {
 # Set default values and initialize variables
 #
 set_defaults() {
+  args=
   api=
   debug=false
   dry_run=false
@@ -391,6 +392,7 @@ get_args() {
   if [ -z "$1" ] ; then
     usage
   fi
+  args=("$@")
   while [ $# -gt 0 ] ; do
     case "$1" in
       --help | -help | -h )
@@ -1583,12 +1585,14 @@ bulk_request() {
       echo "To check status of request, paste request URL in browser:"
       echo "   ${request_url}"      
       echo "Or use command:"
-      if  [ -n "$auth_file" ] ; then
-         echo "   $0 --stat-request $request_id --api $api --$auth_method $auth_file" | tr -d '\r'
-
-      else
-         echo "   $0 --stat-request $request_id --api $api" | tr -d '\r'
+      cmd_args=""
+      if [[ "${args[@]}" =~ "api" ]]; then
+         cmd_args="--api $api"
       fi
+      if [[ "${args[@]}" =~ "netrc" || "${args[@]}" =~ "proxy" || "${args[@]}" =~ "tokenfile" ]]; then
+         cmd_args="$cmd_args --$auth_method $auth_file"
+      fi 
+      echo "   $0 --stat-request $request_id $cmd_args" | tr -d '\r'  
       ;;
     * )
       # Something else went wrong; could be
