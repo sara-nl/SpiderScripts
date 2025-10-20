@@ -186,6 +186,9 @@ usage() {
     --stat-request <request-id>
 	      Show status of bulk request for given request-id
 
+    --delete-request <request-id>
+	      Delete bulk request with given request-id
+
 	  --events <channel-name> <path-to-follow> [--resume] [--force] [--recursive] [--timeout s]
 	      Subscribe to changes in the given direcory,
 	      using server-sent events (SSE).
@@ -630,7 +633,12 @@ get_args() {
         command='stat-request'
         request_id="$2"
         shift ; shift
-        ;;  
+        ;;
+      --delete-request )
+        command='delete-request'
+        request_id="$2"
+        shift ; shift
+        ;;          
       --events )
         command='events'
         channel_name="$2"
@@ -1468,6 +1476,26 @@ get_status_requestid () {
       echo 1>&2 "Error: the request ID '$request_id' is not valid"
       return 1
     fi
+  fi
+}
+
+
+delete_requestid () {
+  local request_id="$1"
+  # check if request ID is valid, exit if invalid
+  get_status_requestid ${request_id} > /dev/null 2>&1
+  if [ $? == 1 ] ; then
+    echo 1>&2 "Error: cannot delete bulk request, request ID invalid"
+    exit 1
+  fi
+  command='$debug && set -x
+          curl "${curl_authorization[@]}" \
+          "${curl_options_common[@]}" \
+          -X DELETE "${api}"/bulk-requests/"${request_id}"'
+  if $dry_run ; then
+    echo "$command"
+  else
+    eval "$command"
   fi
 }
 
@@ -2322,7 +2350,7 @@ validate_input() {
         exit 1
       fi
       ;;
-    stat-request )
+    stat-request | delete-request)
       if [[ -z $request_id || $request_id =~ ^-- ]] ; then
         echo 1>&2 "ERROR: command $command requires a request-id."
         exit 1
@@ -2830,6 +2858,9 @@ api_call () {
     stat-request )
       get_status_requestid "$request_id"
       ;;
+    delete-request )
+      delete_requestid "$request_id"
+      ;;      
     events | report-staged )
       if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
         echo 1>&2 "ERROR: your bash version is too old: $BASH_VERSION." \
