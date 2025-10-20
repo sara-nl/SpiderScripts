@@ -1473,7 +1473,7 @@ get_status_requestid () {
     if [[ $valid == 'true' ]] ; then
       echo "$result"
     else
-      echo 1>&2 "Error: the request ID '$request_id' is not valid"
+      echo 1>&2 "ERROR: the request ID '$request_id' is not valid"
       return 1
     fi
   fi
@@ -1485,7 +1485,7 @@ delete_requestid () {
   # check if request ID is valid, exit if invalid
   get_status_requestid ${request_id} > /dev/null 2>&1
   if [ $? == 1 ] ; then
-    echo 1>&2 "Error: cannot delete bulk request, request ID invalid"
+    echo 1>&2 "ERROR: cannot delete bulk request, request ID invalid"
     exit 1
   fi
   command='$debug && set -x
@@ -1530,7 +1530,7 @@ bulk_request() {
     esac
   else
     if $recursive ; then
-      echo 1>&2 "Error: recursive (un)staging forbidden when using file-list."
+      echo 1>&2 "ERROR: recursive (un)staging forbidden when using file-list."
       exit 1
     else
       expand=TARGETS
@@ -1546,7 +1546,7 @@ bulk_request() {
          # check if request ID is valid, exit if invalid
          get_status_requestid ${request_id} > /dev/null 2>&1
          if [ $? == 1 ] ; then
-            echo 1>&2 "Error: cannot unstage, request ID invalid"
+            echo 1>&2 "ERROR: cannot unstage, request ID invalid"
             exit 1
          fi
          arguments="{\"id\": \"${request_id}\"}"
@@ -1657,7 +1657,7 @@ with_files_in_dir_do () {
   case $recursive in
     true | false )  ;;  # No problem
     * )
-      echo 1>&2 "Error in with_files_in_dir_do: recursive='$recursive'; should be true or false."
+      echo 1>&2 "ERROR in with_files_in_dir_do: recursive='$recursive'; should be true or false."
       exit 1
       ;;
   esac

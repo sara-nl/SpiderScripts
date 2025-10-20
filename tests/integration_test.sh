@@ -422,6 +422,24 @@ test_ada_request_id() {
     uid=`cat "${stdoutF}" | jq -r '.uid'`
     echo $uid
     assertEquals ${uid} ${request_id}
+
+    # Test deleting of request id,
+    command="ada/ada --tokenfile ${token_file} --delete-request ${request_id} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+
+    # Test if request has been deleted; request id should not exist anymore
+    command="ada/ada --tokenfile ${token_file} --stat-request ${request_id} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "Request ID ${request_id} not deleted as expected" 1 ${result} || return
+    grep "ERROR" "${stderrF}" >/dev/null
+    assertTrue "ada --stat-request did not return ERROR message as expected" $?
 }
 
 # Stages files in file_list
