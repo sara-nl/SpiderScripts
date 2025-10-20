@@ -122,6 +122,25 @@ usage() {
 	      Please note, that dCache storage systems usually
 	      don't have an undelete option.
 
+	  --upload /localpath/file /remotepath/[file] [--verify-checksum]
+	      Upload a file from the local system to dCache.
+	      With --verify-checksum, Ada computes the local file's
+	      MD5 checksum and sends it along with the upload.
+	      If the uploaded file's checksum does not match,
+	      dCache aborts the transfer and removes the corrupt file.
+	      This ensures data integrity during transfer.
+
+	      Ada will try several ways to discover a WebDAV door
+	      to use for the transfer.
+	      If that fails, you can specify the door explicitly by
+	      prepending it to the remote path, for example:
+	      https://webdav.example.org/remotepath/remotefile
+
+	  --download /remotepath/file /localpath/[file] [--verify-checksum]
+	      Download a file from dCache.
+	      With --verify-checksum, Ada will verify the file's checksum
+	      after download, and show an error message if it doesn't match.
+
 	  --setlabel <file> <label>
 	      Attach a label to a file.
 	  --rmlabel <file> <label>
@@ -316,6 +335,7 @@ set_defaults() {
   path=
   request_id=
   recursive=false
+  verify_checksum=false
   force=false
   resume=false
 
@@ -495,6 +515,12 @@ get_args() {
         path="$2"
         shift ; shift
         ;;
+      --upload )
+        command='upload'
+        source="$2"
+        target="$3"
+        shift ; shift ; shift
+        ;;
       --setlabel )
         command='setlabel'
         path="$2"
@@ -645,6 +671,10 @@ get_args() {
         ;;
       --recursive )
         recursive=true
+        shift
+        ;;
+      --verify-checksum )
+        verify_checksum=true
         shift
         ;;
       --force )
@@ -1016,16 +1046,20 @@ get_webdav_door () {
   local webdav_door
   local command
   # Method 1: if there's an Rclone config file, read the WebDAV door from that.
+  $debug && echo "Getting WebDAV door." 1>&2
+  $debug && echo "Method 1: get WebDAV door from tokenfile." 1>&2
   if [ -f "$tokenfile" ] ; then
     $debug && echo "Getting WebDAV door from '$tokenfile' ..." 1>&2
     webdav_door=$(awk -F' *= *' '/^url *=/ {print $2}' "$tokenfile")
     if [ -n "$webdav_door" ] ; then
+      $debug && echo 1>&2 "Selected WebDAV door: '$webdav_door'"
       echo "$webdav_door"
       return 0
     fi
   fi
-  $debug && echo "Method failed. Trying next method." 1>&2
+  $debug && echo "Method 1 failed. Trying next method." 1>&2
   # Method 2: read the /scripts/config.js file from the API server.
+  $debug && echo "Method 2: get WebDAV door from API configuration." 1>&2
   command='$debug && set -x
            curl "${curl_authorization[@]}" \
                 "${curl_options_common[@]}" \
@@ -1041,10 +1075,11 @@ get_webdav_door () {
   fi
   # If we got a WebDAV door, we're done! Print value and return.
   if [ -n "$webdav_door" ] ; then
+    $debug && echo 1>&2 "Selected WebDAV door: '$webdav_door'"
     echo "$webdav_door"
     return 0
   fi
-  $debug && echo "Method failed. Trying next method." 1>&2
+  $debug && echo "Method 2 failed. Trying next method." 1>&2
   # Method 3.
   # This uses the /doors API call, which lists all doors.
   # The list of doors can be quite long.
@@ -1055,6 +1090,7 @@ get_webdav_door () {
   # - a lot of tags (which means it's publically advertised)
   # - port 443 is preferred (reduces firewall issues)
   # - a low load (we don't want a busy door)
+  $debug && echo "Method 3: ask API for door information" 1>&2
   command='$debug && set -x
            curl "${curl_authorization[@]}" \
                 "${curl_options_common[@]}" \
@@ -1084,10 +1120,14 @@ get_webdav_door () {
   fi
   # If we got a WebDAV door, we're done! Print value and return.
   if [ -n "$webdav_door" ] ; then
+    $debug && echo 1>&2 "Selected WebDAV door: '$webdav_door'"
     echo "$webdav_door"
     return 0
   else
-    echo "Unable to get WebDAV door. Please try again with --debug to get more information." 1>&2
+    $debug && echo "Method 3 failed. No other methods available." 1>&2
+    echo 1>&2 "Unable to get WebDAV door. Please try again with --debug to get more information." \
+              "If you want to upload or download, you could prepend the remote file with the webdav door." \
+              "See the help text for more information."
     return 1
   fi
 }
@@ -1130,6 +1170,29 @@ pathtype () {
       exit 1
     fi
   fi
+}
+
+
+exists () {
+  # Check whether a path exists. If the path doesn't exist, just continue.
+  # Similar to pathtype(), but that one quits with error if the path doesn't exist.
+  encoded_path=$(urlencode "$1")
+  # Warn the developers not to call this function before the auth has been set up.
+  if [ -z "$curl_authorization" ] ; then
+    echo 1>&2 "ERROR: calling function exists() before authentication has been set up." \
+              "Please submit an issue for this at https://github.com/sara-nl/SpiderScripts/ ."
+    exit 1
+  fi
+  result=$(
+            $debug && set -x
+            curl "${curl_authorization[@]}" \
+                 -H "accept: application/json" \
+                 --silent \
+                 -X GET "$api/namespace/$encoded_path" 2>/dev/null
+          )
+  # jq will check if key .fileType exists.
+  # The exit code of jq will be passed on to the caller of the function.
+  echo "$result" | jq 'has("fileType")' | grep --silent 'true'
 }
 
 
@@ -2247,6 +2310,9 @@ validate_input() {
       ;;
   esac
 
+  # Basic input validation, such as checking if necessary arguments are provided.
+  # Validation that uses the API is done later, because authentication has
+  # not been set up yet.
   case $command in
     list | stat | mkdir | mv | delete | \
     setlabel | lslabel | findlabel | rmlabel | \
@@ -2319,6 +2385,16 @@ validate_input() {
     longlist | checksum | stage | unstage )
       if [[ -z $pathlist || $pathlist =~ ^-- ]] ; then
         echo 1>&2 "ERROR: command $command requires a path or a path list."
+        exit 1
+      fi
+      ;;
+    upload )
+      if [[ -z $source || $source == --* ]] ; then
+        echo 1>&2 "ERROR: please specify a source file for your upload."
+        exit 1
+      fi
+      if [[ -z $target || $target == --* ]] ; then
+        echo 1>&2 "ERROR: please specify a target for your upload."
         exit 1
       fi
       ;;
@@ -2597,6 +2673,105 @@ api_call () {
           exit 1
           ;;
       esac
+      ;;
+    upload )
+      # Check source (local) file
+      if [[ ! -f $source ]] ; then
+        echo 1>&2 "ERROR: local file '$source' does not exist or is not a file."
+        exit 1
+      fi
+      # Check target (remote) path.
+      # Has the user prepended a WebDAV door to the target? Split it.
+      if [[ "$target" == *"://"* ]]; then
+        webdav_door="${target%%//*}://${target#*//}"
+        webdav_door="${webdav_door%%/*}"
+        path="/${target#*://*/}"
+      else
+        webdav_door=""
+        path="$target"
+      fi
+      # If the target exists, it may be OK, if it's a dir.
+      if exists "$path" ; then
+        $debug && echo 1>&2 "Path $path exists."
+        # Let's check the target path. If it exists, it should be a dir, not a file,
+        # because dCache usually does not allow overwrites, and even if it does,
+        # overwrites can be dangerous.
+        case $(pathtype "$path") in
+          REGULAR )
+            echo 1>&2 "ERROR: target '$path' is an existing file. Ada doesn't support overwriting a file."
+            exit 1
+            ;;
+          LINK )
+            echo 1>&2 "ERROR: target '$path' is a symlink. A symlink can point to a file or a directory." \
+                      "Ada does not support uploading to a symlink."
+            exit 1
+            ;;
+          DIR )
+            real_target="$target$(basename "$source")"
+            if exists "$real_target" ; then
+              echo 1>&2 "Target '$real_target' already exists. Ada does not support overwriting."
+              exit 1
+            fi
+            ;;
+        esac
+      else
+        # target does not exist. That is OK, if the parent dir exists.
+        $debug && echo 1>&2 "Path $path does not exists."
+        parent=$(dirname "$path")
+        if ! is_dir "$parent" ; then
+          echo 1>&2 "ERROR: parent of '$path', '$parent', is not a directory." \
+                    "Can't write there. Please create that directory first."
+          exit 1
+        fi
+      fi
+      #
+      # Does the user want to automatically verify checksum?
+      # This has a few advantages:
+      # - An MD5 checksum will be added to the file in dCache
+      # - Upload will fail when the checksum doesn't match, and
+      #   the corrupt file will be removed automatically.
+      curl_args=()
+      if $verify_checksum ; then
+        $debug && set -x   # In debug mode, switch on tracing
+        source_checksum=$(md5sum "$source" | cut -d' ' -f1 | xxd -r -p | base64)
+        { set +x ; } 2>/dev/null   # Silently switch off tracing
+        if [[ -z $source_checksum ]] ; then
+          echo 1>&2 "ERROR: you want to upload with checksum verification," \
+                    "but the checksum of '$source' could not be found."
+          exit 1
+        fi
+        curl_args=(
+          -H "Content-MD5: $source_checksum"
+        )
+      fi
+      # We can't upload through the API; we need a WebDAV door for that.
+      # If the user hasn't prepended the WebDAV door to the target,
+      # we need to discover it.
+      if [[ -z $webdav_door ]] ; then
+        webdav_door=$(get_webdav_door "$api")
+      else
+        $debug && echo 1>&2 "User specified WebDAV door: $webdav_door"
+      fi
+      # We should be ready to upload now!
+      # If --debug was specified, run curl with --verbose.
+      if $debug ; then
+        curl_args+=(--verbose)
+      fi
+      $debug && set -x   # If --debug is specified, show curl command (tracing on)
+      curl "${curl_authorization[@]}" \
+           --location --post302 \
+           "${curl_args[@]}" \
+           -T "$source" \
+           "$webdav_door$target"
+      { set +x ; } 2>/dev/null   # Silently switch off tracing
+      ;;
+    download )
+      # Check source (remote)
+      #  - Is file? Then OK
+      # Check target (local)
+      #  - Is file? Overwrite or not?
+      #  - Is dir? Use remote file name
+      #  - Does not exist? Check if parent is an existing dir, then OK, use remote file name
       ;;
     setlabel | lslabel | rmlabel )
       case $(pathtype "$path") in
