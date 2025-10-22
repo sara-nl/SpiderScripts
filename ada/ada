@@ -672,6 +672,7 @@ get_args() {
         ;;
       --delete-request )
         command='delete-request'
+        check_arg $command $2        
         request_id="$2"
         shift ; shift
         ;;          
