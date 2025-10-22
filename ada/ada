@@ -186,6 +186,9 @@ usage() {
 	  --stat-request <request-id>
 	      Show status of bulk request for given request-id
 
+    --delete-request <request-id>
+	      Delete bulk request with given request-id
+
 	  --events <channel-name> <path-to-follow> [--resume] [--force] [--recursive] [--timeout s]
 	      Subscribe to changes in the given direcory,
 	      using server-sent events (SSE).
@@ -301,7 +304,7 @@ set_defaults() {
   # The ADA_VERSION value will be automatically updated by Github action Update-ada-version.yml
   # For a release, it will contain the version number (like v3.1).
   # For a branch, it will contain the branch name.
-  ADA_VERSION="master"
+  ADA_VERSION="110-delete-bulk-request"
   args=
   api=
   debug=false
@@ -404,7 +407,7 @@ get_args() {
         ;;
       --version )
         echo "$ADA_VERSION"
-        exit 1
+        exit 0
         ;;
       --tokenfile )
         check_arg "tokenfile" $2
@@ -666,7 +669,13 @@ get_args() {
         check_arg $command $2
         request_id="$2"
         shift ; shift
-        ;;  
+        ;;
+      --delete-request )
+        command='delete-request'
+        check_arg $command $2        
+        request_id="$2"
+        shift ; shift
+        ;;          
       --events )
         command='events'
         check_arg $command $2
@@ -1518,9 +1527,29 @@ get_status_requestid () {
     if [[ $valid == 'true' ]] ; then
       echo "$result"
     else
-      echo 1>&2 "Error: the request ID '$request_id' is not valid"
+      echo 1>&2 "ERROR: the request ID '$request_id' is not valid"
       return 1
     fi
+  fi
+}
+
+
+delete_requestid () {
+  local request_id="$1"
+  # check if request ID is valid, exit if invalid
+  get_status_requestid ${request_id} > /dev/null 2>&1
+  if [ $? == 1 ] ; then
+    echo 1>&2 "ERROR: cannot delete bulk request, request ID invalid"
+    exit 1
+  fi
+  command='$debug && set -x
+          curl "${curl_authorization[@]}" \
+          "${curl_options_common[@]}" \
+          -X DELETE "${api}"/bulk-requests/"${request_id}"'
+  if $dry_run ; then
+    echo "$command"
+  else
+    eval "$command"
   fi
 }
 
@@ -1555,7 +1584,7 @@ bulk_request() {
     esac
   else
     if $recursive ; then
-      echo 1>&2 "Error: recursive (un)staging forbidden when using file-list."
+      echo 1>&2 "ERROR: recursive (un)staging forbidden when using file-list."
       exit 1
     else
       expand=TARGETS
@@ -1571,7 +1600,7 @@ bulk_request() {
          # check if request ID is valid, exit if invalid
          get_status_requestid ${request_id} > /dev/null 2>&1
          if [ $? == 1 ] ; then
-            echo 1>&2 "Error: cannot unstage, request ID invalid"
+            echo 1>&2 "ERROR: cannot unstage, request ID invalid"
             exit 1
          fi
          arguments="{\"id\": \"${request_id}\"}"
@@ -1682,7 +1711,7 @@ with_files_in_dir_do () {
   case $recursive in
     true | false )  ;;  # No problem
     * )
-      echo 1>&2 "Error in with_files_in_dir_do: recursive='$recursive'; should be true or false."
+      echo 1>&2 "ERROR in with_files_in_dir_do: recursive='$recursive'; should be true or false."
       exit 1
       ;;
   esac
@@ -2375,7 +2404,7 @@ validate_input() {
         exit 1
       fi
       ;;
-    stat-request )
+    stat-request | delete-request)
       if [[ -z $request_id || $request_id =~ ^-- ]] ; then
         echo 1>&2 "ERROR: command $command requires a request-id."
         exit 1
@@ -2883,6 +2912,9 @@ api_call () {
     stat-request )
       get_status_requestid "$request_id"
       ;;
+    delete-request )
+      delete_requestid "$request_id"
+      ;;      
     events | report-staged )
       if [ "${BASH_VERSINFO[0]}" -lt 4 ] ; then
         echo 1>&2 "ERROR: your bash version is too old: $BASH_VERSION." \
