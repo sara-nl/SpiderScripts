@@ -301,7 +301,7 @@ set_defaults() {
   # The ADA_VERSION value will be automatically updated by Github action Update-ada-version.yml
   # For a release, it will contain the version number (like v3.1).
   # For a branch, it will contain the branch name.
-  ADA_VERSION="123-provide-reliable-ada---version"
+  ADA_VERSION="master"
   args=
   api=
   debug=false
