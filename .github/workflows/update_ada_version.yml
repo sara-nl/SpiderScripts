@@ -24,7 +24,7 @@ jobs:
 
       - name: Update version in ada script
         run: |
-          sed "s/ADA_VERSION=.*/ADA_VERSION=\"${VERSION}\"/" -i ada/ada
+          sed -i".tmp" "s/ADA_VERSION=.*/ADA_VERSION=\"${VERSION}\"/" ada/ada
 
       - name: Commit and push updated ada script
         run: |
