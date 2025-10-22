@@ -407,7 +407,7 @@ get_args() {
         ;;
       --version )
         echo "$ADA_VERSION"
-        exit 1
+        exit 0
         ;;
       --tokenfile )
         check_arg "tokenfile" $2
