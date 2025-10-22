@@ -18,19 +18,13 @@ jobs:
 
       - name: Determine version or branch
         run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            VERSION="${GITHUB_REF_NAME}"
-          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            VERSION=$(git rev-parse --abbrev-ref HEAD)
-          else
-            VERSION="${GITHUB_REF_NAME}"
-          fi
+          VERSION="${GITHUB_REF_NAME}"
           echo "Using version identifier: ${VERSION}"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
       - name: Update version in ada script
         run: |
-          sed -i "s/ADA_VERSION=.*/ADA_VERSION=\"${VERSION}\"/" ada/ada
+          sed -i".tmp" "s/ADA_VERSION=.*/ADA_VERSION=\"${VERSION}\"/" ada/ada
 
       - name: Commit and push updated ada script
         run: |
