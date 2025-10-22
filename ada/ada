@@ -183,7 +183,7 @@ usage() {
 	  --unstage --from-file <file-list>
 	      Release files in the list.
 
-    --stat-request <request-id>
+	  --stat-request <request-id>
 	      Show status of bulk request for given request-id
 
 	  --events <channel-name> <path-to-follow> [--resume] [--force] [--recursive] [--timeout s]
