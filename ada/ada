@@ -521,6 +521,12 @@ get_args() {
         target="$3"
         shift ; shift ; shift
         ;;
+      --download )
+        command='download'
+        source="$2"
+        target="$3"
+        shift ; shift ; shift
+        ;;
       --setlabel )
         command='setlabel'
         path="$2"
@@ -1063,7 +1069,6 @@ get_webdav_door () {
   command='$debug && set -x
            curl "${curl_authorization[@]}" \
                 "${curl_options_common[@]}" \
-                -H "Authorization: bearer $BEARER_TOKEN" \
                 -H "Accept: application/json" \
                 "$api_server/scripts/config.js" \
            | jq -r ".\"dcache-view.endpoints.webdav\"" '
@@ -1737,6 +1742,55 @@ get_checksums () {
 }
 
 
+get_checksum () {
+  # Prints the requested checksum of a dCache file; nothing else.
+  # If the checksum of that type is not in the dCache database, print nothing.
+  local type="$1"
+  local path="$2"
+  encoded_path=$(urlencode "$path")
+  # Make sure the checksum type is something that dCache understands
+  case $type in
+    adler32 | ADLER32 )
+      type=ADLER32
+      ;;
+    md5* | MD5* )
+      type=MD5_TYPE
+      ;;
+    * )
+      echo 1>&2 "ERROR: checksum type '$type' is unsupported."
+      exit 1
+      ;;
+  esac
+  # We output only the requested checksum, nothing else.
+  # If the requested checksum for this file is not in the dCache database,
+  # the result will be empty.
+  curl "${curl_authorization[@]}" \
+       "${curl_options_no_errors[@]}" \
+       -X GET "$api/namespace/$encoded_path?checksum=true" \
+  | jq -r ".checksums[] | select(.type == \"$type\") | .value"
+}
+
+
+get_local_checksum () {
+  # prints the checksum of a local file (not in dCache).
+  local type="$1"
+  local file="$2"
+  case $type in
+    adler32 | ADLER32 )
+      # This might be the most portable way to calculate an Adler32 checksum.
+      python3 -c "import zlib,sys;print(format(zlib.adler32(open('$file','rb').read()) & 0xffffffff,'08x'))"
+      ;;
+    md5* | MD5* )
+      md5sum --quiet "$file"
+      ;;
+    * )
+      echo 1>&2 "ERROR: checksum type '$type' is unsupported."
+      exit 1
+      ;;
+  esac
+}
+
+
 get_channel_by_name () {
   local channel_name="$1"
   # Many other API calls depend on this one.
@@ -2388,13 +2442,13 @@ validate_input() {
         exit 1
       fi
       ;;
-    upload )
+    upload | download )
       if [[ -z $source || $source == --* ]] ; then
-        echo 1>&2 "ERROR: please specify a source file for your upload."
+        echo 1>&2 "ERROR: please specify a source file for your $command."
         exit 1
       fi
       if [[ -z $target || $target == --* ]] ; then
-        echo 1>&2 "ERROR: please specify a target for your upload."
+        echo 1>&2 "ERROR: please specify a target for your $command."
         exit 1
       fi
       ;;
@@ -2753,10 +2807,6 @@ api_call () {
         $debug && echo 1>&2 "User specified WebDAV door: $webdav_door"
       fi
       # We should be ready to upload now!
-      # If --debug was specified, run curl with --verbose.
-      if $debug ; then
-        curl_args+=(--verbose)
-      fi
       $debug && set -x   # If --debug is specified, show curl command (tracing on)
       curl "${curl_authorization[@]}" \
            --location --post302 \
@@ -2766,12 +2816,119 @@ api_call () {
       { set +x ; } 2>/dev/null   # Silently switch off tracing
       ;;
     download )
-      # Check source (remote)
-      #  - Is file? Then OK
+      #
       # Check target (local)
-      #  - Is file? Overwrite or not?
-      #  - Is dir? Use remote file name
-      #  - Does not exist? Check if parent is an existing dir, then OK, use remote file name
+      # We check the target first because it is local and thus faster.
+      #
+      curl_target=()
+      # If a file already exists, quit.
+      if [[ -f $target ]] ; then
+        echo 1>&2 "ERROR: Target file '$target' already exists."
+        exit 1
+      fi
+      # If the target is a directory, we tell curl to use the
+      # remote filename
+      if [[ -d $target ]] ; then
+        real_target="${target%/}/$(basename "$source")"
+        if [[ -e "$real_target" ]] ; then
+          echo 1>&2 "ERROR: destination '$real_target' already exists."
+          exit 1
+        fi
+      fi
+      # If the target does not exist, it's OK if the parent dir exists.
+      if [[ ! -e $target ]] ; then
+        parent=$(dirname "$target")
+        if [[ ! -d $parent ]] ; then
+          echo "ERROR: Can't download to '$target': directory '$parent' does not exist."
+          exit 1
+        fi
+        real_target="$target"
+      fi
+      curl_target=(--output "$real_target")
+      #
+      # Check source (remote).
+      #
+      # Has the user prepended a WebDAV door to the source? Split it.
+      if [[ "$source" == *"://"* ]]; then
+        webdav_door="${source%%//*}://${source#*//}"
+        webdav_door="${webdav_door%%/*}"
+        path="/${source#*://*/}"
+      else
+        webdav_door=""
+        path="$source"
+      fi
+      # Does the source (remote path) exist?
+      if ! exists "$path" ; then
+        echo 1>&2 "ERROR: source file '$path' does not exist."
+        exit 1
+      fi
+      # The source path should be a file, not a dir or a link.
+      case $(pathtype "$path") in
+        DIR )
+          echo 1>&2 "Source '$path' is a directory. Ada does not support downloading a directory." \
+                    "You can use Rclone for that."
+          exit 1
+          ;;
+        LINK )
+          echo 1>&2 "ERROR: target '$path' is a symlink. A symlink can point to a file or a directory." \
+                    "Ada does not support downloading from a symlink."
+          exit 1
+          ;;
+      esac
+      # If the source file is only on tape and not online,
+      # dCache would automatically stage it when we read it, but
+      # that could take a very long time (varying from minutes to days).
+      # All that time, the curl would be waiting for the file,
+      # keeping a transfer slot occupied, and confusing the user.
+      # So, we refuse to download tape files, and suggest to stage them.
+      if ! is_online "$path" ; then
+        echo 1>&2 "ERROR: file '$path' exists, but it is on tape, and not online." \
+                  "You need to stage it first before you can download it." \
+                  "You can use 'ada --stage $path' for this." 
+        exit 1
+      fi
+      # We can't download through the API; we need a WebDAV door for that.
+      # If the user hasn't prepended the WebDAV door to the source,
+      # we need to discover it.
+      if [[ -z $webdav_door ]] ; then
+        webdav_door=$(get_webdav_door "$api")
+      else
+        $debug && echo 1>&2 "User specified WebDAV door: $webdav_door"
+      fi
+      # We should be ready to download!
+      $debug && set -x   # If --debug is specified, show curl command (tracing on)
+      curl "${curl_authorization[@]}" \
+           --location --post302 \
+           "$webdav_door$source" \
+           "${curl_target[@]}"
+      { set +x ; } 2>/dev/null   # Silently switch off tracing
+      if $verify_checksum ; then
+        # For now, we just print the checksums; verify will be implemented later.
+        remote_checksum=$(get_checksum ADLER32 "$path")
+        if [[ -n $remote_checksum ]] ; then
+          local_checksum=$(get_local_checksum ADLER32 "$real_target")
+        else
+          remote_checksum=$(get_checksum MD5 "$path")
+          if [[ -z $remote_checksum ]] ; then
+            echo 1>&2 "ERROR: unable to get a checksum for file '$path'."
+            exit 1
+          fi
+          local_checksum=$(get_local_checksum MD5 "$real_target")
+        fi
+        if [[ "$local_checksum" == "$remote_checksum" ]] ; then
+          if $debug ; then
+            echo 1>&2 "Remote checksum: $remote_checksum" ;
+            echo 1>&2 "Local checksum : $local_checksum" ;
+          fi
+          echo "Checksum OK."
+        else
+          {
+            echo "ERROR: Checksum incorrect! File '$real_target' might be damaged."
+            echo "Remote checksum: $remote_checksum" ;
+            echo "Local checksum : $local_checksum" ;
+          } 1>&2
+        fi
+      fi
       ;;
     setlabel | lslabel | rmlabel )
       case $(pathtype "$path") in
