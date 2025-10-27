@@ -2,8 +2,6 @@ name: Update ada version
 
 on:
   push:
-    branches:
-      - '**'     # runs on any branch push
     tags:
       - 'v*'     # runs on tag push
   workflow_dispatch:   # manual trigger possible
