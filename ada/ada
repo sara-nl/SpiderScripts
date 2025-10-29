@@ -2946,10 +2946,15 @@ api_call () {
         if [[ "${args[*]}" =~ "netrc" || "${args[*]}" =~ "proxy" || "${args[*]}" =~ "tokenfile" ]]; then
           cmd_args="--$auth_method $auth_file $cmd_args"
         fi
-        echo 1>&2 "ERROR: file '$path' exists, but it is on tape, and not online." \
-                  "You need to stage it first before you can download it." \
-                  "You can do that with this command:"
-        echo 1>&2 "   $0 --stage $path" "$cmd_args" | tr -d '\r'
+        {
+          echo "ERROR: file '$path' exists, but it is on tape, and not online." \
+              "You need to stage it first before you can download it." \
+              "You can do that with this command:"
+          echo
+          echo "   $0 --stage $path" "$cmd_args" | tr -d '\r'
+          echo
+          echo "Please note, that staging works most efficiently when done in bulk."
+        } 1>&2
         exit 1
       fi
       # We can't download through the API; we need a WebDAV door for that.
