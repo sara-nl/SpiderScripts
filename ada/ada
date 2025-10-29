@@ -2938,9 +2938,18 @@ api_call () {
       # keeping a transfer slot occupied, and confusing the user.
       # So, we refuse to download tape files, and suggest to stage them.
       if ! is_online "$path" ; then
+        # Construct the stage command that the user would need to stage this file.
+        cmd_args=""
+        if [[ "${args[*]}" =~ "api" ]]; then
+          cmd_args="--api $api"
+        fi
+        if [[ "${args[*]}" =~ "netrc" || "${args[*]}" =~ "proxy" || "${args[*]}" =~ "tokenfile" ]]; then
+          cmd_args="--$auth_method $auth_file $cmd_args"
+        fi
         echo 1>&2 "ERROR: file '$path' exists, but it is on tape, and not online." \
                   "You need to stage it first before you can download it." \
-                  "You can use 'ada --stage $path' for this." 
+                  "You can do that with this command:"
+        echo 1>&2 "   $0 --stage $path" "$cmd_args" | tr -d '\r'
         exit 1
       fi
       # We can't download through the API; we need a WebDAV door for that.
