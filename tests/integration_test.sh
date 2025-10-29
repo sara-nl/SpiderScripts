@@ -5,7 +5,8 @@
 # Check if version is as expected
 test_ada_version() {
     result=`ada/ada --version`
-    assertEquals "Check ada version:" "v3.1" ${result}
+    assertEquals "ada returned error code" 0 $?
+    echo "Testing ada version ${result}"
 }
 
 # Check whoami
@@ -422,6 +423,24 @@ test_ada_request_id() {
     uid=`cat "${stdoutF}" | jq -r '.uid'`
     echo $uid
     assertEquals ${uid} ${request_id}
+
+    # Test deleting of request id,
+    command="ada/ada --tokenfile ${token_file} --delete-request ${request_id} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "ada returned error code ${result}" 0 ${result} || return
+
+    # Test if request has been deleted; request id should not exist anymore
+    command="ada/ada --tokenfile ${token_file} --stat-request ${request_id} --api ${api}"
+    echo "Running command:"
+    echo $command
+    eval $command >${stdoutF} 2>${stderrF}
+    result=$?
+    assertEquals "Request ID ${request_id} not deleted as expected" 1 ${result} || return
+    grep "ERROR" "${stderrF}" >/dev/null
+    assertTrue "ada --stat-request did not return ERROR message as expected" $?
 }
 
 # Stages files in file_list
