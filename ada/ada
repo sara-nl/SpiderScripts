@@ -1820,10 +1820,12 @@ get_checksum () {
   # We output only the requested checksum, nothing else.
   # If the requested checksum for this file is not in the dCache database,
   # the result will be empty.
+  $debug && set -x
   curl "${curl_authorization[@]}" \
        "${curl_options_no_errors[@]}" \
        -X GET "$api/namespace/$encoded_path?checksum=true" \
   | jq -r ".checksums[] | select(.type == \"$type\") | .value"
+  { set +x ; } &> /dev/null
 }
 
 
@@ -2973,11 +2975,15 @@ api_call () {
            "${curl_target[@]}"
       { set +x ; } 2>/dev/null   # Silently switch off tracing
       if $verify_checksum ; then
-        # For now, we just print the checksums; verify will be implemented later.
+        $debug && echo 1>&2 "Comparing checksums..."
+        # Get the checksum of the remote file from the dCache database.
+        # First try Adler32 because it is the default in dCache,
+        # and fastest to calculate locally.
         remote_checksum=$(get_checksum ADLER32 "$path")
         if [[ -n $remote_checksum ]] ; then
           local_checksum=$(get_local_checksum ADLER32 "$real_target")
         else
+          # No Adler32 in the dCache database? Then try MD5.
           remote_checksum=$(get_checksum MD5 "$path")
           if [[ -z $remote_checksum ]] ; then
             echo 1>&2 "ERROR: unable to get a checksum for file '$path'."
