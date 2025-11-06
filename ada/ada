@@ -87,6 +87,9 @@ usage() {
 
 	  --mv <file|directory> <destination>
 	      Rename or move a file or directory.
+	      Please note, that moving a file will not change its
+	      properties. A tape file will remain a tape file,
+	      even when you move it to a disk directory.
 
 	  --delete <file|directory> [--recursive [--force]]
 	      Delete a file or directory.
