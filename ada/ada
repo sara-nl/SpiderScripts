@@ -99,7 +99,7 @@ usage() {
 	      Please note, that dCache storage systems usually
 	      don't have an undelete option.
 
-	  --upload /localpath/file /remotepath/[file] [--verify-checksum]
+	  --upload /localpath/file /remotepath/[file] [--verify-checksum] [--allow-insecure-redirects]
 	      Upload a file from the local system to dCache.
 	      With --verify-checksum, Ada computes the local file's
 	      MD5 checksum and sends it along with the upload.
@@ -118,7 +118,12 @@ usage() {
 	      prepending it to the remote path, for example:
 	      https://webdav.example.org/remotepath/remotefile
 
-	  --download /remotepath/file /localpath/[file] [--verify-checksum]
+	      During uploads, Ada will prevent redirects from
+	      HTTPS to HTTP for security reasons. If you want to
+	      allow HTTP (for performance reasons), you can use
+	      --allow-insecure-redirects.
+
+	  --download /remotepath/file /localpath/[file] [--verify-checksum] [--allow-insecure-redirects]
 	      Download a file from dCache.
 	      With --verify-checksum, Ada will verify the file's checksum
 	      after download, and show an error message if it doesn't match.
@@ -127,6 +132,17 @@ usage() {
 	      exists, Ada will print an error message, except when
 	      you specify --verify-checksum: then Ada will compare
 	      checksums of source and destination.
+
+	      Ada will try several ways to discover a WebDAV door
+	      to use for the transfer.
+	      If that fails, you can specify the door explicitly by
+	      prepending it to the remote path, for example:
+	      https://webdav.example.org/remotepath/remotefile
+
+	      During downloads, Ada will prevent redirects from
+	      HTTPS to HTTP for security reasons. If you want to
+	      allow HTTP (for performance reasons), you can use
+	      --allow-insecure-redirects.
 
 	  --setlabel <file> <label>
 	      Attach a label to a file.
@@ -332,6 +348,7 @@ set_defaults() {
   verify_checksum=false
   force=false
   resume=false
+  allow_insecure_redirects=false
 
   # Default options to curl for various activities;
   # these can be overridden in configuration files, see below.
@@ -717,6 +734,10 @@ get_args() {
         ;;
       --verify-checksum )
         verify_checksum=true
+        shift
+        ;;
+      --allow-insecure-redirects )
+        allow_insecure_redirects=true
         shift
         ;;
       --force )
@@ -2837,6 +2858,8 @@ api_call () {
       esac
       ;;
     upload )
+      # Initialise
+      curl_args=()
       # Check source (local) file
       if [[ ! -f $source ]] ; then
         echo 1>&2 "ERROR: local file '$source' does not exist or is not a file."
@@ -2845,9 +2868,9 @@ api_call () {
       # Check target (remote) path.
       # Has the user prepended a WebDAV door to the target? Split it.
       if [[ "$target" == *"://"* ]]; then
-        webdav_door="${target%%//*}://${target#*//}"
-        webdav_door="${webdav_door%%/*}"
-        path="/${target#*://*/}"
+        webdav_door=$(echo "$target" | sed -nE 's#^([^:]+://[^/]+).*#\1#p')
+        path=$(echo "$target" | sed -nE 's#^[^:]+://[^/]+(/.*)#\1#p')
+        $debug && echo 1>&2 "webdav_door = $webdav_door | path = $path"
       else
         webdav_door=""
         path="$target"
@@ -2880,8 +2903,14 @@ api_call () {
           DIR )
             real_target="$target$(basename "$source")"
             if exists "$real_target" ; then
-              echo 1>&2 "Target '$real_target' already exists. Ada does not support overwriting."
-              exit 1
+              if $verify_checksum ; then
+                echo 1>&2 "Target '$real_target' already exists. Verifying checksum..."
+                compare_checksums "$source" "$real_target" || exit 1
+                exit 0
+              else
+                echo 1>&2 "Target '$real_target' already exists. Ada does not support overwriting."
+                exit 1
+              fi
             fi
             ;;
         esac
@@ -2901,7 +2930,6 @@ api_call () {
       # - An MD5 checksum will be added to the file in dCache
       # - Upload will fail when the checksum doesn't match, and
       #   the corrupt file will be removed automatically.
-      curl_args=()
       if $verify_checksum ; then
         $debug && set -x   # In debug mode, switch on tracing
         source_checksum=$(md5sum "$source" | cut -d' ' -f1 | xxd -r -p | base64)
@@ -2923,6 +2951,17 @@ api_call () {
       else
         $debug && echo 1>&2 "User specified WebDAV door: $webdav_door"
       fi
+      # Some dCache WebDAV doors may redirect from HTTPS to HTTP.
+      # By default, we prevent that with curl --proto =https.
+      # But there may be valid reasons to allow HTTP:
+      # it's faster. So we allow the user to override this
+      # with '--allow-insecure-redirects'.
+      if ! $allow_insecure_redirects ; then
+        # User does not override: limit curl to HTTPS only.
+        curl_args+=(
+          --proto '=https'
+        )
+      fi
       # We should be ready to upload now!
       if $verify_checksum ; then
         echo 1>&2 "Uploading with checksum verification..."
@@ -2934,10 +2973,12 @@ api_call () {
            --location --post302 \
            "${curl_args[@]}" \
            -T "$source" \
-           "$webdav_door$target"
+           "$webdav_door$path"
       { set +x ; } 2>/dev/null   # Silently switch off tracing
       ;;
     download )
+      # Initialise
+      curl_args=()
       #
       # Check target (local)
       # We check the target first because it is local and thus faster.
@@ -2980,9 +3021,9 @@ api_call () {
       #
       # Has the user prepended a WebDAV door to the source? Split it.
       if [[ "$source" == *"://"* ]]; then
-        webdav_door="${source%%//*}://${source#*//}"
-        webdav_door="${webdav_door%%/*}"
-        path="/${source#*://*/}"
+        webdav_door=$(echo "$source" | sed -nE 's#^([^:]+://[^/]+).*#\1#p')
+        path=$(echo "$source" | sed -nE 's#^[^:]+://[^/]+(/.*)#\1#p')
+        $debug && echo 1>&2 "webdav_door = $webdav_door | path = $path"
       else
         webdav_door=""
         path="$source"
@@ -3000,7 +3041,7 @@ api_call () {
           exit 1
           ;;
         LINK )
-          echo 1>&2 "ERROR: target '$path' is a symlink. A symlink can point to a file or a directory." \
+          echo 1>&2 "ERROR: source '$path' is a symlink. A symlink can point to a file or a directory." \
                     "Ada does not support downloading from a symlink."
           exit 1
           ;;
@@ -3039,15 +3080,27 @@ api_call () {
       else
         $debug && echo 1>&2 "User specified WebDAV door: $webdav_door"
       fi
+      # Some dCache WebDAV doors may redirect from HTTPS to HTTP.
+      # By default, we prevent that with 'curl --proto =https'.
+      # But there may be valid reasons to allow HTTP:
+      # it's faster. So we allow the user to override this
+      # with '--allow-insecure-redirects'.
+      if ! $allow_insecure_redirects ; then
+        # User does not override: limit curl to HTTPS only.
+        curl_args+=(
+          --proto '=https'
+        )
+      fi
       # We should be ready to download!
       $debug && set -x   # If --debug is specified, show curl command (tracing on)
       curl "${curl_authorization[@]}" \
+           "${curl_args[@]}" \
            --location --post302 \
-           "$webdav_door$source" \
+           "$webdav_door$path" \
            "${curl_target[@]}"
       { set +x ; } 2>/dev/null   # Silently switch off tracing
       if $verify_checksum ; then
-        compare_checksums "$real_target" "$source" || exit 1
+        compare_checksums "$real_target" "$path" || exit 1
       fi
       ;;
     setlabel | lslabel | rmlabel )
