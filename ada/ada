@@ -103,6 +103,11 @@ usage() {
 	      If the uploaded file's checksum does not match,
 	      dCache aborts the transfer and removes the corrupt file.
 	      This ensures data integrity during transfer.
+	      
+	      Ada does not overwrite files. If the destination file
+	      exists, Ada will print an error message, except when
+	      you specify --verify-checksum: then Ada will compare
+	      checksums of source and destination.
 
 	      Ada will try several ways to discover a WebDAV door
 	      to use for the transfer.
@@ -114,6 +119,11 @@ usage() {
 	      Download a file from dCache.
 	      With --verify-checksum, Ada will verify the file's checksum
 	      after download, and show an error message if it doesn't match.
+
+	      Ada does not overwrite files. If the destination file
+	      exists, Ada will print an error message, except when
+	      you specify --verify-checksum: then Ada will compare
+	      checksums of source and destination.
 
 	  --setlabel <file> <label>
 	      Attach a label to a file.
@@ -1849,6 +1859,43 @@ get_local_checksum () {
 }
 
 
+compare_checksums() {
+  local local_file="$1"
+  local remote_file="$2"
+  $debug && echo 1>&2 "Comparing checksums..."
+  # Get the checksum of the remote file from the dCache database.
+  # First try Adler32 because it is the default in dCache,
+  # and fastest to calculate locally.
+  remote_checksum=$(get_checksum ADLER32 "$remote_file")
+  if [[ -n $remote_checksum ]] ; then
+    local_checksum=$(get_local_checksum ADLER32 "$local_file")
+  else
+    # No Adler32 in the dCache database? Then try MD5.
+    remote_checksum=$(get_checksum MD5 "$remote_file")
+    if [[ -z $remote_checksum ]] ; then
+      echo 1>&2 "ERROR: unable to get a checksum for file '$remote_file'."
+      exit 1
+    fi
+    local_checksum=$(get_local_checksum MD5 "$local_file")
+  fi
+  if [[ "$local_checksum" == "$remote_checksum" ]] ; then
+    if $debug ; then
+      echo 1>&2 "Remote checksum: $remote_checksum for file '$remote_file'." ;
+      echo 1>&2 "Local checksum : $local_checksum for file '$local_file'." ;
+    fi
+    echo "Checksum OK."
+    return 0
+  else
+    {
+      echo "ERROR: Checksum mismatch!"
+      echo "Remote checksum: $remote_checksum" ;
+      echo "Local checksum : $local_checksum" ;
+    } 1>&2
+    return 1
+  fi
+}
+
+
 get_channel_by_name () {
   local channel_name="$1"
   # Many other API calls depend on this one.
@@ -2810,8 +2857,17 @@ api_call () {
         # overwrites can be dangerous.
         case $(pathtype "$path") in
           REGULAR )
-            echo 1>&2 "ERROR: target '$path' is an existing file. Ada doesn't support overwriting a file."
-            exit 1
+            # Target (remote) exists and is a file.
+            # If user wants to verify checksums, we verify checksums!
+            if $verify_checksum ; then
+              echo 1>&2 "Target (remote) file '$path' already exists. Verifying checksum..."
+              compare_checksums "$source" "$path" || exit 1
+              exit 0
+            else
+              # User not interested in checksums. We show an error message.
+              echo 1>&2 "ERROR: target '$path' is an existing file. Ada doesn't support overwriting a file."
+              exit 1
+            fi
             ;;
           LINK )
             echo 1>&2 "ERROR: target '$path' is a symlink. A symlink can point to a file or a directory." \
@@ -2865,6 +2921,11 @@ api_call () {
         $debug && echo 1>&2 "User specified WebDAV door: $webdav_door"
       fi
       # We should be ready to upload now!
+      if $verify_checksum ; then
+        echo 1>&2 "Uploading with checksum verification..."
+      else
+        echo 1>&2 "Uploading..."
+      fi
       $debug && set -x   # If --debug is specified, show curl command (tracing on)
       curl "${curl_authorization[@]}" \
            --location --post302 \
@@ -2879,10 +2940,18 @@ api_call () {
       # We check the target first because it is local and thus faster.
       #
       curl_target=()
-      # If a file already exists, quit.
+      # Does the local (target) file already exist?
       if [[ -f $target ]] ; then
-        echo 1>&2 "ERROR: Target file '$target' already exists."
-        exit 1
+        # If user wants to verify checksums, we verify checksums!
+        if $verify_checksum ; then
+          echo 1>&2 "Target (local) file '$target' already exists. Verifying checksum..."
+          compare_checksums "$target" "$source" || exit 1
+          exit 0
+        else
+          # User not interested in checksums. We show an error message.
+          echo 1>&2 "ERROR: Target file '$target' already exists."
+          exit 1
+        fi
       fi
       # If the target is a directory, we tell curl to use the
       # remote filename
@@ -2975,35 +3044,7 @@ api_call () {
            "${curl_target[@]}"
       { set +x ; } 2>/dev/null   # Silently switch off tracing
       if $verify_checksum ; then
-        $debug && echo 1>&2 "Comparing checksums..."
-        # Get the checksum of the remote file from the dCache database.
-        # First try Adler32 because it is the default in dCache,
-        # and fastest to calculate locally.
-        remote_checksum=$(get_checksum ADLER32 "$path")
-        if [[ -n $remote_checksum ]] ; then
-          local_checksum=$(get_local_checksum ADLER32 "$real_target")
-        else
-          # No Adler32 in the dCache database? Then try MD5.
-          remote_checksum=$(get_checksum MD5 "$path")
-          if [[ -z $remote_checksum ]] ; then
-            echo 1>&2 "ERROR: unable to get a checksum for file '$path'."
-            exit 1
-          fi
-          local_checksum=$(get_local_checksum MD5 "$real_target")
-        fi
-        if [[ "$local_checksum" == "$remote_checksum" ]] ; then
-          if $debug ; then
-            echo 1>&2 "Remote checksum: $remote_checksum" ;
-            echo 1>&2 "Local checksum : $local_checksum" ;
-          fi
-          echo "Checksum OK."
-        else
-          {
-            echo "ERROR: Checksum incorrect! File '$real_target' might be damaged."
-            echo "Remote checksum: $remote_checksum" ;
-            echo "Local checksum : $local_checksum" ;
-          } 1>&2
-        fi
+        compare_checksums "$real_target" "$source" || exit 1
       fi
       ;;
     setlabel | lslabel | rmlabel )
