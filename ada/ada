@@ -101,11 +101,18 @@ usage() {
 
 	  --upload /localpath/file /remotepath/[file] [--verify-checksum] [--allow-insecure-redirects]
 	      Upload a file from the local system to dCache.
+
 	      With --verify-checksum, Ada computes the local file's
 	      MD5 checksum and sends it along with the upload.
 	      If the uploaded file's checksum does not match,
 	      dCache aborts the transfer and removes the corrupt file.
 	      This ensures data integrity during transfer.
+
+	      By default, dCache uses Adler32 as checksum.
+	      With --verify-checksum, dCache will store both the
+	      default (Adler32) and the MD5 checksum in its database.
+	      Without --verify-checksum, only the Adler32 checksum
+	      is stored, and not verified.
 	      
 	      Ada does not overwrite files. If the destination file
 	      exists, Ada will print an error message, except when
