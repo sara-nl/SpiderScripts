@@ -52,6 +52,26 @@ wget https://raw.githubusercontent.com/sara-nl/GridScripts/master/view-macaroon 
 wget https://raw.githubusercontent.com/sara-nl/GridScripts/master/get-macaroon -P ada
 ```
 
+### Availability
+The commands now are only available in the installed folder. To make them accessible from any location on your computer do:
+
+#### MacOs
+
+```
+chmod +x ./ada
+sudo ln -s ./ada /usr/local/bin/ada
+sudo ln -s ./get-macaroon /usr/local/bin/get-macaroon
+sudo ln -s ./view-macaroon /usr/local/bin/view-macaroon
+```
+
+Test with a new terminal and type in `ada --help`.
+
+#### Linux
+
+TODO
+
+
+
 ### Testing
 
 To test the installation, run:
