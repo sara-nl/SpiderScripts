@@ -46,7 +46,14 @@ dnf install jq rclone
 
 There are also optional dependencies to run tests and create macaroons:
 ```
-brew install shunit2 (or "wget https://raw.githubusercontent.com/kward/shunit2/refs/heads/master/shunit2")
+brew install shunit2
+```
+or
+```
+wget https://raw.githubusercontent.com/kward/shunit2/refs/heads/master/shunit2
+```
+
+```
 pip install pymacaroons
 wget https://raw.githubusercontent.com/sara-nl/GridScripts/master/view-macaroon -P ada
 wget https://raw.githubusercontent.com/sara-nl/GridScripts/master/get-macaroon -P ada
@@ -59,9 +66,11 @@ The commands now are only available in the installed folder. To make them access
 
 ```
 chmod +x ./ada
-sudo ln -s ./ada /usr/local/bin/ada
-sudo ln -s ./get-macaroon /usr/local/bin/get-macaroon
-sudo ln -s ./view-macaroon /usr/local/bin/view-macaroon
+chmod +x ada/get-macaroon
+chmod +x ada/view-macaroon
+sudo ln -s "$(pwd)/ada/ada" /usr/local/bin/ada
+sudo ln -s "$(pwd)/ada/get-macaroon" /usr/local/bin/get-macaroon
+sudo ln -s "$(pwd)/ada/view-macaroon" /usr/local/bin/view-macaroon
 ```
 
 Test with a new terminal and type in `ada --help`.
@@ -70,7 +79,13 @@ Test with a new terminal and type in `ada --help`.
 
 TODO
 
+### Ada configuration
 
+Please create a file `/.ada/ada.conf` with the following content (your friendly sysadmin will provide you the details):
+
+```
+api=https://<dcache api server>:<port>/api/v1
+```
 
 ### Testing
 
