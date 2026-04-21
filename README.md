@@ -4,6 +4,10 @@ Welcome! These are a few scripts that we use at SURF to work with the [Spider co
 
 ## ADA - Advanced dCache API
 
+### Migration to Python
+
+ADA is being rewritten from Bash to Python. You can check out progress at https://github.com/sara-nl/dcache-pyclient. The Bash version (in this git repo) is no longer actively developed.
+
 ### About ADA
 
 ADA is a client that talks to the [dCache storage system](https://dcache.org/) [API](https://www.dcache.org/manuals/UserGuide-10.2/frontend.shtml) to work with data in dCache.
