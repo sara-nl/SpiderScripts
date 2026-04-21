@@ -16,15 +16,22 @@ ADA is a client that talks to the [dCache storage system](https://dcache.org/) [
 * Work with labels on files: set labels, remove them, and search directories for files with labels
 * Work with file metadata (extended attributes): set attributes, delete them, and search directories for files with certain attributes
 * Stage files (restore from tape), check whether they are online or not
-* Show available space in dCache
+* Show your disk and tape quotas
 * Subscribe to server-sent-events to set up automated workflows
+* Upload and download files
 
-Many of these operations can be done recursively. For authentication, ADA supports X509, tokens (macaroons and OIDC) and basic auth (username/password), depending on the dCache configuration. 
+Many of these operations can be done recursively. For authentication, ADA supports X509, tokens (macaroons and OIDC) and basic auth (username/password), depending on the dCache configuration.
+
+When something goes wrong, Ada tries to provide clear, understandable and useful error messages, so you can help yourself, or otherwise your support team will be able to help you better.
+
+With the `--debug` flag, Ada provides a wealth of information that may help you to troubleshoot problems. If you are a developer, this will help you to understand how to talk to the dCache API.
+
 
 #### Limitations
 
-* ADA does not transfer files; we suggest you use [Rclone](https://rclone.org/) for that.
+* ADA can upload and download files, but not in bulk, and it's not as efficient as [Rclone](https://rclone.org/).
 * ADA depends on dCache. The dCache system you work with may have limitations that impact ADA.
+* Ada is currently implemented in bash. Bash has limitations; for instance, trying to stage more than 1500 files in a single operation may fail.
 
 ### Installation
 
